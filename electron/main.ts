@@ -1,7 +1,6 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, protocol, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, protocol, shell } from 'electron';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
 
 const isMac = process.platform === 'darwin';
 const DEV_URL = process.env.VITE_DEV_SERVER_URL;
@@ -20,6 +19,27 @@ function appRoot(): string {
   return path.join(app.getAppPath(), 'dist');
 }
 
+const MIME: Record<string, string> = {
+  '.html': 'text/html; charset=utf-8',
+  '.js': 'text/javascript; charset=utf-8',
+  '.mjs': 'text/javascript; charset=utf-8',
+  '.css': 'text/css; charset=utf-8',
+  '.json': 'application/json',
+  '.png': 'image/png',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.wasm': 'application/wasm',
+  '.ttf': 'font/ttf',
+  '.otf': 'font/otf',
+  '.woff': 'font/woff',
+  '.woff2': 'font/woff2',
+  '.map': 'application/json',
+};
+
+/**
+ * Serves the bundled UI through app://. Reading with fs (rather than the file
+ * protocol) keeps working inside the asar archive once packaged.
+ */
 function registerProtocol(): void {
   protocol.handle('app', async (request) => {
     const url = new URL(request.url);
@@ -29,7 +49,11 @@ function registerProtocol(): void {
     const resolved = path.normalize(path.join(root, pathname));
     if (!resolved.startsWith(root)) return new Response('Forbidden', { status: 403 });
     try {
-      return await net.fetch(pathToFileURL(resolved).toString());
+      const data = await fs.readFile(resolved);
+      const type = MIME[path.extname(resolved).toLowerCase()] ?? 'application/octet-stream';
+      return new Response(new Uint8Array(data), {
+        headers: { 'Content-Type': type, 'Cache-Control': 'no-cache' },
+      });
     } catch {
       return new Response('Not found', { status: 404 });
     }

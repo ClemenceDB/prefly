@@ -1,5 +1,5 @@
 (() => {
-  const REPO = { owner: 'ClemenceDB', name: 'pre-fly-esad' };
+  const REPO = { owner: 'ClemenceDB', name: 'prefly' };
 
   const host = location.hostname;
   const segments = location.pathname.split('/').filter(Boolean);

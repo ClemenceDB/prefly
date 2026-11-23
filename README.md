@@ -116,7 +116,7 @@ dans un environnement réseau restreint, l'archive Electron peut être indisponi
 Le dépôt local est déjà sur la branche `pre-fly`. Depuis le dossier du projet :
 
 ```bash
-git remote add origin https://github.com/ClemenceDB/pre-fly-esad.git
+git remote add origin https://github.com/ClemenceDB/prefly.git
 git push -u origin pre-fly
 ```
 
