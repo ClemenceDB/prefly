@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { analyzePdf } from '../src/core/analyze';
 import { detectCode } from '../src/core/code';
-import { brokenPdf, cleanPdf, problematicPdf } from './fixtures';
+import { THRESHOLDS } from '../src/core/thresholds';
+import { brokenPdf, cleanPdf, imageAtDpiPdf, manyPagesPdf, problematicPdf } from './fixtures';
 
 const ids = (report: Awaited<ReturnType<typeof analyzePdf>>) => report.findings.map((f) => f.id);
 
@@ -78,5 +79,60 @@ describe('détection de code dans le texte', () => {
     expect(svg.some((match) => match.kind === 'svg' && match.strong)).toBe(true);
     const js = detectCode('function test() { console.log(1); }');
     expect(js.some((match) => match.kind === 'javascript')).toBe(true);
+  });
+});
+
+describe('seuils Konica C4065', () => {
+  it('joint le profil et ses valeurs au rapport', async () => {
+    const report = await analyzePdf({ name: 'propre.pdf', bytes: cleanPdf() });
+    expect(report.profile.id).toBe('konica-c4065');
+    expect(report.thresholds.image.dpiWarning).toBe(THRESHOLDS.image.dpiWarning);
+    expect(report.thresholds.raster.defaultDpi).toBe(200);
+  });
+
+  it('accepte une image à 240 dpi (au-dessus du seuil de 200)', async () => {
+    const report = await analyzePdf({ name: '240.pdf', bytes: imageAtDpiPdf(240) });
+    expect(report.images[0]?.dpi).toBeGreaterThanOrEqual(238);
+    expect(ids(report)).not.toContain('image-low-dpi');
+  });
+
+  it('alerte dès 180 dpi et bloque sous 120 dpi', async () => {
+    const warn = await analyzePdf({ name: '180.pdf', bytes: imageAtDpiPdf(180) });
+    const low = warn.findings.find((finding) => finding.id === 'image-low-dpi');
+    expect(low?.severity).toBe('warning');
+    expect(low?.title).toContain('200 dpi');
+
+    const critical = await analyzePdf({ name: '100.pdf', bytes: imageAtDpiPdf(100) });
+    const severe = critical.findings.find((finding) => finding.id === 'image-low-dpi');
+    expect(severe?.severity).toBe('critical');
+    expect(severe?.detail).toContain('120 dpi');
+  });
+
+  it('signale un fichier au-delà de 120 Mo et bloque au-delà de 250 Mo', async () => {
+    const bytes = cleanPdf();
+    const heavy = await analyzePdf({
+      name: 'lourd.pdf',
+      bytes,
+      size: THRESHOLDS.file.sizeWarningBytes + 1,
+    });
+    const finding = heavy.findings.find((item) => item.id === 'file-heavy');
+    expect(finding?.severity).toBe('warning');
+
+    const critical = await analyzePdf({
+      name: 'tres-lourd.pdf',
+      bytes,
+      size: THRESHOLDS.file.sizeCriticalBytes + 1,
+    });
+    expect(critical.findings.find((item) => item.id === 'file-heavy')?.severity).toBe('critical');
+  });
+
+  it('passe le volume de pages en alerte à 250 pages', async () => {
+    const many = await analyzePdf({ name: 'volume.pdf', bytes: manyPagesPdf(130) });
+    const finding = many.findings.find((item) => item.id === 'many-pages');
+    expect(finding?.severity).toBe('info');
+
+    const heavy = await analyzePdf({ name: 'volume2.pdf', bytes: manyPagesPdf(THRESHOLDS.pages.heavy + 5) });
+    expect(heavy.findings.find((item) => item.id === 'many-pages')?.severity).toBe('warning');
+    expect(heavy.file.pages).toBe(THRESHOLDS.pages.heavy + 5);
   });
 });

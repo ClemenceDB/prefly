@@ -5,6 +5,7 @@ import Queue from './components/Queue';
 import ReportView from './components/ReportView';
 import { analyzePdf } from './core/analyze';
 import { optimizePdf, suggestName } from './core/optimize';
+import { THRESHOLDS } from './core/thresholds';
 import type { Report } from './core/types';
 import { humanBytes } from './core/utils';
 import { bridge, downloadBytes, isDesktop, saveOutput } from './lib/bridge';
@@ -231,7 +232,7 @@ export default function App() {
   }, []);
 
   const runOptimize = useCallback(
-    async (job: Job, mode: 'compress' | 'raster', dpi = 200) => {
+    async (job: Job, mode: 'compress' | 'raster', dpi = THRESHOLDS.raster.defaultDpi) => {
       if (!job.bytes.length) return;
       update(job.id, {
         action: mode,
@@ -242,7 +243,7 @@ export default function App() {
         if (mode === 'raster') renderer = await createRenderer(job.bytes);
         const result = await optimizePdf(job.bytes, {
           mode,
-          imageDpi: 300,
+          imageDpi: THRESHOLDS.compress.targetDpi,
           rasterDpi: dpi,
           quality: mode === 'raster' ? 0.86 : 0.82,
           renderPage: renderer?.renderPage,

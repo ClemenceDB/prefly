@@ -1,6 +1,7 @@
 import { PDFDict, PDFDocument, PDFName, PDFNumber, PDFRawStream, type PDFObject, type PDFRef } from 'pdf-lib';
 import { buildEnv, colorSpaceName, pageContentStreams, scanContent } from './content';
 import { asStream, collectPages, get, loadPdf, nameOf, numOf, resolve } from './pdfdoc';
+import { THRESHOLDS } from './thresholds';
 import { humanBytes, toArrayBuffer } from './utils';
 
 export type OptimizeMode = 'compress' | 'raster';
@@ -210,7 +211,7 @@ export async function optimizePdf(input: Uint8Array, options: OptimizeOptions): 
   const refs = new Map<PDFObject, PDFRef>();
   for (const [ref, object] of ctx.enumerateIndirectObjects()) refs.set(object, ref);
 
-  const maxDpi = options.imageDpi ?? 300;
+  const maxDpi = options.imageDpi ?? THRESHOLDS.compress.targetDpi;
   let recompressed = 0;
   let savedBytes = 0;
   let skipped = 0;
@@ -220,7 +221,7 @@ export async function optimizePdf(input: Uint8Array, options: OptimizeOptions): 
   for (const [raw, info] of placements) {
     index += 1;
     onProgress(index, total, `Image ${index}/${total}`);
-    if (info.dpi <= maxDpi + 5) continue;
+    if (info.dpi <= maxDpi + THRESHOLDS.compress.toleranceDpi) continue;
     const stream = asStream(raw);
     if (!stream) continue;
     if (stream.contents.length < 120_000) continue;
@@ -294,7 +295,7 @@ export async function optimizePdf(input: Uint8Array, options: OptimizeOptions): 
 
 async function rasterize(input: Uint8Array, options: OptimizeOptions, notes: string[]): Promise<OptimizeResult> {
   if (!options.renderPage) throw new Error('Fonction de rendu absente');
-  const dpi = options.rasterDpi ?? 200;
+  const dpi = options.rasterDpi ?? THRESHOLDS.raster.defaultDpi;
   const quality = options.quality ?? 0.85;
   const onProgress = options.onProgress ?? (() => undefined);
   const pause = () => new Promise((resolve) => setTimeout(resolve, options.yieldMs ?? 0));

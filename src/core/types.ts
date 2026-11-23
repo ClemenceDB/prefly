@@ -1,3 +1,5 @@
+import type { Thresholds } from './thresholds';
+
 export type Severity = 'critical' | 'warning' | 'info';
 
 export type Category = 'fonts' | 'images' | 'colors' | 'exotic' | 'structure' | 'pages' | 'text';
@@ -112,6 +114,9 @@ export interface TextStats {
 export interface Report {
   file: DocInfo;
   text?: TextStats;
+  /** Seuils appliqués, joints au rapport pour la traçabilité. */
+  thresholds: Thresholds;
+  profile: { id: string; label: string };
   verdict: Verdict;
   score: number;
   findings: Finding[];

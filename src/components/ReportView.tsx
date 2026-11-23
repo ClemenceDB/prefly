@@ -1,5 +1,6 @@
 import type { Job } from '../types';
 import { VERDICT_LABEL } from '../types';
+import { THRESHOLDS, PROFILE_LABEL, thresholdSummary } from '../core/thresholds';
 import { humanBytes, humanNumber } from '../core/utils';
 import Findings from './Findings';
 
@@ -141,6 +142,17 @@ export default function ReportView({
         </div>
       </div>
 
+      <details className="thresholds">
+        <summary className="mono">Seuils appliqués · {PROFILE_LABEL}</summary>
+        <ul className="evidence">
+          {thresholdSummary(report.thresholds).map((line) => (
+            <li key={line.label}>
+              {line.label} — {line.value}
+            </li>
+          ))}
+        </ul>
+      </details>
+
       {report.text && (
         <p className="mono" style={{ margin: '10px 0 0' }}>
           Texte extrait · {humanNumber(report.text.chars)} caractères sur {report.text.pages} page(s)
@@ -168,7 +180,7 @@ export default function ReportView({
                 </span>
               </summary>
               <div className="menu-pop">
-                {[150, 200, 300].map((dpi) => (
+                {THRESHOLDS.raster.choices.map((dpi) => (
                   <button
                     type="button"
                     key={dpi}
@@ -179,7 +191,13 @@ export default function ReportView({
                     }}
                   >
                     <span>{dpi} dpi</span>
-                    <small>{dpi === 200 ? 'recommandé' : dpi === 300 ? 'qualité max' : 'léger'}</small>
+                    <small>
+                      {dpi === THRESHOLDS.raster.defaultDpi
+                        ? 'recommandé'
+                        : dpi === Math.max(...THRESHOLDS.raster.choices)
+                          ? 'qualité max'
+                          : 'léger'}
+                    </small>
                   </button>
                 ))}
               </div>
@@ -307,7 +325,16 @@ export default function ReportView({
             </thead>
             <tbody>
               {report.images.slice(0, 30).map((image, index) => {
-                const dpiTone = image.dpi === null ? undefined : image.dpi < 150 ? 'bad' : image.dpi > 600 ? 'warn' : 'ok';
+                const dpiTone =
+                  image.dpi === null
+                    ? undefined
+                    : image.dpi < THRESHOLDS.image.dpiCritical
+                      ? 'bad'
+                      : image.dpi < THRESHOLDS.image.dpiWarning
+                        ? 'warn'
+                        : image.dpi > THRESHOLDS.image.dpiExcessive
+                          ? 'warn'
+                          : 'ok';
                 return (
                   <tr key={`${image.page}-${image.name}-${index}`}>
                     <td className="num">{image.page}</td>

@@ -862,6 +862,43 @@ button {
 }
 
 /* ----------------------------------------------------------------- panels */
+.thresholds {
+  margin-top: 12px;
+}
+
+.thresholds summary {
+  cursor: pointer;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 0;
+}
+
+.thresholds summary::-webkit-details-marker {
+  display: none;
+}
+
+.thresholds summary::after {
+  content: '+';
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.thresholds[open] summary::after {
+  content: '−';
+}
+
+.thresholds summary:hover {
+  color: var(--ink);
+}
+
+.thresholds .evidence {
+  margin-top: 8px;
+  max-width: 640px;
+}
+
 .section {
   margin-top: 30px;
 }

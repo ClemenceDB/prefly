@@ -104,3 +104,41 @@ export function problematicPdf(): Uint8Array {
 export function brokenPdf(): Uint8Array {
   return new Uint8Array(Buffer.from('%PDF-1.7\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n', 'latin1'));
 }
+
+/** Une page A4 avec une image JPEG de 3000 px de large, placée pour obtenir `dpi`. */
+export function imageAtDpiPdf(dpi: number): Uint8Array {
+  const widthPt = (3000 * 72) / dpi;
+  const content = `q ${widthPt} 0 0 ${widthPt} 40 40 cm /Im1 Do Q`;
+  return buildPdf([
+    `<< /Type /Catalog /Pages 2 0 R >>`,
+    `<< /Type /Pages /Kids [3 0 R] /Count 1 /Resources << /XObject << /Im1 5 0 R >> >> >>`,
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 4 0 R >>`,
+    streamObject('', content),
+    streamObject(
+      '/Type /XObject /Subtype /Image /Width 3000 /Height 3000 /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode',
+      '\xff\xd8\xff\xd9',
+    ),
+  ]);
+}
+
+/** Document multipage minimal, pour tester les seuils de volume. */
+export function manyPagesPdf(count: number): Uint8Array {
+  const pageObjects: string[] = [];
+  const kids: string[] = [];
+  const bodies: string[] = [
+    `<< /Type /Catalog /Pages 2 0 R >>`,
+    '', // page tree, rempli plus bas
+  ];
+  // Objets : 1 catalogue, 2 page tree, puis (page, content) par page.
+  for (let i = 0; i < count; i += 1) {
+    const pageId = 3 + i * 2;
+    const contentId = pageId + 1;
+    kids.push(`${pageId} 0 R`);
+    pageObjects.push(
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents ${contentId} 0 R >>`,
+      streamObject('', ''),
+    );
+  }
+  bodies[1] = `<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${count} >>`;
+  return buildPdf([...bodies, ...pageObjects]);
+}

@@ -37,6 +37,7 @@ import type {
   Severity,
   TextPage,
 } from './types';
+import { PROFILE_ID, PROFILE_LABEL, THRESHOLDS } from './thresholds';
 import { SEVERITY_ORDER } from './types';
 import { cleanFontName, clamp, formatPageSize, humanBytes, humanNumber, isSubsetName, latin1, truncate, unique } from './utils';
 
@@ -776,13 +777,31 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
         advice: 'Exporter avec 3 mm de fonds perdus et les repères de coupe (PDF/X-4).',
       });
     }
-    if (docInfo.pages > 150) {
+    if (docInfo.pages >= THRESHOLDS.pages.many) {
+      const heavy = docInfo.pages >= THRESHOLDS.pages.heavy;
       add({
         id: 'many-pages',
-        severity: 'info',
+        severity: heavy ? 'warning' : 'info',
         category: 'pages',
         title: `${humanNumber(docInfo.pages)} pages`,
-        detail: 'Un nombre de pages élevé augmente la mémoire nécessaire au RIP et le temps de traitement.',
+        detail: heavy
+          ? `Au-delà de ${THRESHOLDS.pages.heavy} pages, le RIP traite le fichier page par page en mémoire : prévoir un envoi fractionné et une compression préalable.`
+          : `Un volume supérieur à ${THRESHOLDS.pages.many} pages augmente le temps de traitement du RIP.`,
+        advice: heavy ? 'Fractionner l’envoi ou rasteriser à 200 dpi pour alléger le flux.' : undefined,
+      });
+    }
+
+    if (input.size && input.size > THRESHOLDS.file.sizeWarningBytes) {
+      const critical = input.size > THRESHOLDS.file.sizeCriticalBytes;
+      add({
+        id: 'file-heavy',
+        severity: critical ? 'critical' : 'warning',
+        category: 'structure',
+        title: `Fichier de ${humanBytes(input.size)}`,
+        detail: critical
+          ? `Au-delà de ${humanBytes(THRESHOLDS.file.sizeCriticalBytes)}, le RIP peut saturer sa mémoire pendant le traitement et interrompre le travail. C’est le cas typique des PDF exportés depuis Figma ou Canva avec des images non optimisées.`
+          : `Un fichier de cette taille ralentit le transfert et le traitement. Les PDF au-delà de ${humanBytes(THRESHOLDS.file.sizeWarningBytes)} gagnent presque toujours à être allégés.`,
+        advice: 'Compresser en priorité ; rasteriser à 200 dpi si le fichier reste lourd.',
       });
     }
 
@@ -829,7 +848,7 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
         evidence: noToUnicode.map((font) => font.name),
       });
     }
-    if (usedFontList.length > 10) {
+    if (usedFontList.length > THRESHOLDS.fonts.many) {
       add({
         id: 'many-fonts',
         severity: 'warning',
@@ -846,16 +865,20 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
     collector.stats.maxImageBytes = maxImageBytes;
     collector.stats.minDpi = minDpi;
 
-    const lowDpi = images.filter((image) => image.dpi !== null && image.dpi < 150);
-    const severeDpi = lowDpi.filter((image) => (image.dpi ?? 0) < 72);
+    const lowDpi = images.filter(
+      (image) => image.dpi !== null && image.dpi < THRESHOLDS.image.dpiWarning,
+    );
+    const severeDpi = lowDpi.filter(
+      (image) => (image.dpi ?? 0) < THRESHOLDS.image.dpiCritical,
+    );
     if (lowDpi.length > 0) {
       add({
         id: 'image-low-dpi',
         severity: severeDpi.length > 0 ? 'critical' : 'warning',
         category: 'images',
-        title: `${lowDpi.length} image(s) sous 150 dpi`,
-        detail: `Résolution insuffisante pour l’impression : pixellisation visible à l’écran et sur papier.${severeDpi.length > 0 ? ` Dont ${severeDpi.length} sous 72 dpi.` : ''}`,
-        advice: 'Remplacer les images basse résolution (300 dpi à taille finale).',
+        title: `${lowDpi.length} image(s) sous ${THRESHOLDS.image.dpiWarning} dpi`,
+        detail: `Résolution insuffisante pour une AccurioPrint à ${THRESHOLDS.image.dpiIdeal} dpi : travées visibles sur les aplats et les dégradés.${severeDpi.length > 0 ? ` Dont ${severeDpi.length} sous ${THRESHOLDS.image.dpiCritical} dpi, inexploitables en impression.` : ''}`,
+        advice: `Remplacer les images basse résolution (${THRESHOLDS.image.dpiIdeal} dpi à taille finale).`,
         evidence: lowDpi.slice(0, 8).map(
           (image) =>
             `${image.page} p. · ${image.name ?? 'image'} · ${image.width}×${image.height} px · ${image.dpi} dpi · ${humanBytes(image.bytes)}`,
@@ -863,29 +886,33 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
         pages: unique(lowDpi.map((image) => image.page)).sort((a, b) => a - b),
       });
     }
-    const oversized = images.filter((image) => (image.dpi ?? 0) > 600);
+    const oversized = images.filter(
+      (image) => (image.dpi ?? 0) > THRESHOLDS.image.dpiExcessive,
+    );
     if (oversized.length > 0) {
       add({
         id: 'image-too-high-dpi',
         severity: 'warning',
         category: 'images',
-        title: `${oversized.length} image(s) au-delà de 600 dpi`,
-        detail: 'Ces images sont inutilement lourdes : au-delà de 300 dpi à taille finale, le gain visuel est nul mais le poids et la mémoire explosent.',
-        advice: 'Réduire à 300 dpi via « Compresser » ou « Rasteriser ».',
+        title: `${oversized.length} image(s) au-delà de ${THRESHOLDS.image.dpiExcessive} dpi`,
+        detail: `Ces images sont inutilement lourdes : au-delà de ${THRESHOLDS.image.dpiIdeal} dpi à taille finale, le gain visuel est nul mais le décodage et la mémoire explosent.`,
+        advice: `Réduire à ${THRESHOLDS.image.dpiIdeal} dpi via « Compresser » ou « Rasteriser ».`,
         evidence: oversized.slice(0, 6).map(
           (image) => `${image.page} p. · ${image.width}×${image.height} px · ${image.dpi} dpi · ${humanBytes(image.bytes)}`,
         ),
       });
     }
-    const heavy = images.filter((image) => image.bytes > 8 * 1024 * 1024);
+    const heavy = images.filter((image) => image.bytes > THRESHOLDS.image.heavyBytes);
     if (heavy.length > 0) {
-      const veryHeavy = heavy.filter((image) => image.bytes > 25 * 1024 * 1024);
+      const veryHeavy = heavy.filter(
+        (image) => image.bytes > THRESHOLDS.image.heavyCriticalBytes,
+      );
       add({
         id: 'image-heavy',
         severity: veryHeavy.length > 0 ? 'critical' : 'warning',
         category: 'images',
         title: `${heavy.length} image(s) très lourde(s)`,
-        detail: `Des images dépassent 8 Mo (jusqu’à ${humanBytes(maxImageBytes)}). Elles saturent la mémoire du RIP et ralentissent le transfert.`,
+        detail: `Des images dépassent ${humanBytes(THRESHOLDS.image.heavyBytes)} (jusqu’à ${humanBytes(maxImageBytes)}). Elles saturent la mémoire du RIP et ralentissent le transfert.`,
         advice: 'Compresser ou rasteriser le fichier avant l’envoi.',
         evidence: heavy.slice(0, 6).map(
           (image) => `${image.page} p. · ${image.name ?? 'image'} · ${humanBytes(image.bytes)} · ${image.filter} · ${image.colorSpace}`,
@@ -904,17 +931,24 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
         evidence: incompatible.slice(0, 8).map((image) => `${image.page} p. · ${image.filter} · ${image.colorSpace}`),
       });
     }
-    const hugePixels = images.filter((image) => image.width * image.height > 40_000_000);
+    const hugePixels = images.filter(
+      (image) => image.width * image.height > THRESHOLDS.image.megapixels,
+    );
     if (hugePixels.length > 0) {
       add({
         id: 'image-megapixel',
         severity: 'warning',
         category: 'images',
-        title: `${hugePixels.length} image(s) de plus de 40 Mpx`,
+        title: `${hugePixels.length} image(s) de plus de ${Math.round(THRESHOLDS.image.megapixels / 1_000_000)} Mpx`,
         detail: 'Ces images sont décodées en mémoire pleine résolution par le RIP, indépendamment de leur taille d’impression.',
       });
     }
-    if (images.length > 0 && input.size && imageBytesTotal > input.size * 0.7 && input.size > 10 * 1024 * 1024) {
+    if (
+      images.length > 0 &&
+      input.size &&
+      imageBytesTotal > input.size * THRESHOLDS.image.dominanceRatio &&
+      input.size > THRESHOLDS.image.dominanceMinBytes
+    ) {
       add({
         id: 'image-dominated',
         severity: 'info',
@@ -1216,6 +1250,8 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
   return {
     file: docInfo,
     text: textStats,
+    thresholds: THRESHOLDS,
+    profile: { id: PROFILE_ID, label: PROFILE_LABEL },
     verdict,
     score,
     findings,
@@ -1228,7 +1264,9 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
       fonts: Array.from(fonts.values()).length,
       fontsNotEmbedded: Array.from(fonts.values()).filter((font) => font.used && !font.embedded).length,
       images: images.length,
-      imagesLowDpi: images.filter((image) => image.dpi !== null && image.dpi < 150).length,
+      imagesLowDpi: images.filter(
+        (image) => image.dpi !== null && image.dpi < THRESHOLDS.image.dpiWarning,
+      ).length,
       minDpi,
       spots: spotNames.size,
       javascript: jsCount,

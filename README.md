@@ -11,7 +11,8 @@ page de téléchargement. Tout est traité en local : aucun fichier n'est envoy�
 | Contrôle | Détails |
 | --- | --- |
 | **Typographies** | polices non embarquées, sous-ensembles incomplets, Type 3, absence de table ToUnicode, glyphes manquants (�), nombre de polices |
-| **Images** | dpi réels à la taille d'impression, poids par image, images > 40 Mpx, JPEG 2000 / JBIG2, masques et transparence |
+| **Images** | dpi réels à la taille d'impression, poids par image, bitmaps > 50 Mpx, JPEG 2000 / JBIG2, masques et transparence |
+| **Volume** | fichier > 120 Mo (bloquant > 250 Mo), > 120 pages (alerte à 250), > 12 polices |
 | **Couleurs & profils** | tons directs (Separation / DeviceN), RVB seul, ICC intégrés, OutputIntent, surimpression, calques OCG, transparence |
 | **Contenu exotique** | SVG (fichier joint, flux XML, code), fichiers embarqués, JavaScript, actions Launch / GoToR, 3D, RichMedia, formulaires, XMP, données propriétaires |
 | **Code dans le texte** | balises SVG / XML / HTML, JavaScript, CSS, Python, gabarits, PostScript, base64 — page par page |
@@ -27,12 +28,33 @@ Deux méthodes, sur n'importe quel fichier (pas seulement ceux en alerte) :
 1. **Compression** — réécriture propre du PDF, retrait des métadonnées, vignettes, contenu actif et
    pièces jointes, réencodage des images JPEG au-delà de 300 dpi. Le vectoriel, les tons directs et
    les profils sont conservés.
-2. **Rasterisation** — chaque page est rendue à 150, 200 ou 300 dpi (PDF.js + canvas) puis
+2. **Rasterisation** — chaque page est rendue à 150, 200 ou 300 dpi (200 par défaut, PDF.js + canvas) puis
    recomposée en PDF. Tout ce que le RIP ne sait pas lire disparaît : SVG, code, transparence,
    polices exotiques. Le texte n'est plus vectoriel.
 
 Sur ordinateur, le fichier de sortie est écrit **à côté du PDF d'origine** (`fichier-compresse.pdf`,
 `fichier-raster-200dpi.pdf`), avec repli sur « Enregistrer sous ». Sur le web, il est téléchargé.
+
+## Seuils (profil Konica AccurioPrint C4065)
+
+Les valeurs vivent dans un seul fichier : [`src/core/thresholds.ts`](./src/core/thresholds.ts).
+Elles sont jointes à chaque rapport (JSON et interface) pour rester traçables.
+
+| Contrôle | Alerte | Bloquant |
+| --- | --- | --- |
+| Résolution d'image | < 200 dpi | < 120 dpi |
+| Sur-échantillonnage | > 450 dpi | — |
+| Poids d'une image | > 10 Mo | > 25 Mo |
+| Bitmap | > 50 Mpx | — |
+| Poids du fichier | > 120 Mo | > 250 Mo |
+| Volume | > 120 pages | > 250 pages (alerte renforcée) |
+| Nombre de polices | > 12 | — |
+| Compression | conserve 300 dpi (± 15) | — |
+| Rasterisation | 150 / 200 (défaut) / 300 dpi | — |
+
+Cible d'impression : 300 dpi à taille finale. Justification : la C4065 est une presse toner
+quadri avec un RIP Fiery ; au-delà de 450 dpi le gain visuel est nul alors que le décodage coûte
+de la mémoire, et sous 200 dpi les travées apparaissent sur les aplats.
 
 ## Démarrage
 
