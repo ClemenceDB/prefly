@@ -1,0 +1,76 @@
+name: Build apps
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS
+            os: macos-14
+            script: dist:mac
+            artifact: pre-fly-macos
+          - name: Windows
+            os: windows-latest
+            script: dist:win
+            artifact: pre-fly-windows
+          - name: Linux
+            os: ubuntu-latest
+            script: dist:linux
+            artifact: pre-fly-linux
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Typecheck & tests
+        run: |
+          npm run typecheck
+          npm test
+
+      - name: Build application
+        run: npm run ${{ matrix.script }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Collect installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            release/*.dmg
+            release/*.exe
+            release/*.AppImage
+            release/*.zip
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Attach to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/*.dmg
+            release/*.exe
+            release/*.AppImage
+          fail_on_unmatched_files: false
+          generate_release_notes: true

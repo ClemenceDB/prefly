@@ -1,0 +1,9 @@
+node_modules/
+dist/
+release/
+electron/dist/
+*.log
+.DS_Store
+build/icon.iconset/
+
+public/pdfjs/

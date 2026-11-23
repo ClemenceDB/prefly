@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <title>Pré-fly — le pré-vol PDF de l’atelier</title>
+    <meta
+      name="description"
+      content="Pré-fly analyse les PDF avant l’impression : polices, images, couleurs, SVG et code cachés. Application macOS, Windows, Linux et version web. Traitement 100 % local."
+    />
+    <meta name="theme-color" content="#f5f4f0" />
+    <link rel="icon" href="./icon.png" />
+    <link rel="apple-touch-icon" href="./icon.png" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <a class="skip" href="#main">Aller au contenu</a>
+
+    <header class="top">
+      <a class="wordmark" href="./">
+        <span class="mark" aria-hidden="true"></span>
+        <span>Pré-fly</span>
+        <small>pré-vol PDF</small>
+      </a>
+      <nav class="nav" aria-label="Navigation">
+        <a href="#controles">Contrôles</a>
+        <a href="#allegement">Allègement</a>
+        <a href="#telecharger">Télécharger</a>
+        <a class="nav-gh" href="#" data-github>GitHub ↗</a>
+      </nav>
+    </header>
+
+    <main id="main">
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">ESAD · atelier d’impression · Konica AccurioPrint C4065</p>
+          <h1>
+            Le pré-vol PDF<br />
+            qui tient <em>la cadence.</em>
+          </h1>
+          <p class="lede">
+            Déposez vos fichiers à la volée. Pré-fly lit le PDF en local, signale les polices
+            incomplètes, les images trop lourdes, les tons directs, le SVG et le code caché — puis
+            allège le fichier en un geste.
+          </p>
+          <div class="cta-row">
+            <a class="btn btn-primary" href="#telecharger" data-primary-download>
+              Télécharger l’application
+            </a>
+            <a class="btn" href="./app/">Ouvrir la version web</a>
+          </div>
+          <p class="micro">
+            macOS · Windows · Linux — gratuit · aucun fichier envoyé sur un serveur
+          </p>
+        </div>
+
+        <div class="hero-visual" aria-hidden="true">
+          <div class="mock">
+            <div class="mock-head">
+              <span class="mock-file">affiche-atelier.pdf</span>
+              <span class="mock-tag" data-verdict="check">À vérifier</span>
+            </div>
+            <div class="mock-score">
+              <strong>92</strong>
+              <span>/100</span>
+              <div class="mock-score-meta">
+                <span>3 points relevés</span>
+                <span>2 pages · 210 × 297 mm</span>
+              </div>
+            </div>
+            <ul class="mock-list">
+              <li data-sev="critical"><i></i>Police non embarquée — Helvetica</li>
+              <li data-sev="critical"><i></i>Code SVG dans un bloc de texte · p. 1</li>
+              <li data-sev="warning"><i></i>Aucun profil de sortie (OutputIntent)</li>
+              <li data-sev="info"><i></i>2 révisions incrémentales</li>
+            </ul>
+            <div class="mock-foot">
+              <span>Compresser</span>
+              <span>Rasteriser 200 dpi</span>
+              <span class="mock-gain">− 68 %</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="band" id="controles">
+        <div class="band-head">
+          <h2>Ce qui est contrôlé</h2>
+          <p>
+            Un pré-vol pensé pour les PDF générés par InDesign, Illustrator, Figma, Canva, Word ou
+            les outils de design récents — souvent chargés d’objets que le RIP ne sait pas lire.
+          </p>
+        </div>
+        <div class="grid-3">
+          <article class="cell">
+            <span class="num">01</span>
+            <h3>Typographies</h3>
+            <p>
+              Polices non embarquées, sous-ensembles incomplets, Type 3, glyphes manquants. Le RIP
+              ne substitue jamais sans conséquence.
+            </p>
+          </article>
+          <article class="cell">
+            <span class="num">02</span>
+            <h3>Images</h3>
+            <p>
+              Résolution réelle à la taille d’impression, poids, images de plus de 40 Mpx, codage
+              JPEG 2000 ou JBIG2, masques et transparence.
+            </p>
+          </article>
+          <article class="cell">
+            <span class="num">03</span>
+            <h3>Couleurs & profils</h3>
+            <p>
+              Tons directs Separation / DeviceN, espaces RVB et CMJN, profils ICC intégrés,
+              OutputIntent, surimpression et calques.
+            </p>
+          </article>
+          <article class="cell">
+            <span class="num">04</span>
+            <h3>Contenu exotique</h3>
+            <p>
+              SVG encapsulé, fichiers joints, JavaScript, actions Launch, 3D, RichMedia,
+              formulaires et données propriétaires.
+            </p>
+          </article>
+          <article class="cell">
+            <span class="num">05</span>
+            <h3>Code dans le texte</h3>
+            <p>
+              Balises SVG et XML, JavaScript, CSS, Python, base64 : tout fragment de code collé
+              dans un bloc typographique est signalé, page par page.
+            </p>
+          </article>
+          <article class="cell">
+            <span class="num">06</span>
+            <h3>Structure du fichier</h3>
+            <p>
+              Version PDF, chiffrement, mises à jour incrémentales, formats de page hétérogènes,
+              fonds perdus et zones de coupe.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="band band-alt" id="allegement">
+        <div class="band-head">
+          <h2>Deux façons d’alléger</h2>
+          <p>Le même fichier, deux stratégies. Le rapport indique laquelle choisir selon les alertes.</p>
+        </div>
+        <div class="grid-2">
+          <article class="method">
+            <div class="method-head">
+              <h3>Compression</h3>
+              <span class="tag">vectoriel conservé</span>
+            </div>
+            <p>
+              Réécriture propre du PDF, suppression des métadonnées, du contenu actif et des pièces
+              jointes, réencodage des images JPEG au-delà de 300 dpi.
+            </p>
+            <ul>
+              <li>Texte et tracés restent vectoriels</li>
+              <li>Tons directs et profils préservés</li>
+              <li>Idéal quand les alertes sont des images ou du poids</li>
+            </ul>
+          </article>
+          <article class="method">
+            <div class="method-head">
+              <h3>Rasterisation</h3>
+              <span class="tag">aplatissement contrôlé</span>
+            </div>
+            <p>
+              Chaque page est rendue à 150, 200 ou 300 dpi puis recomposée en PDF. Tout ce que le
+              RIP ne comprend pas disparaît : SVG, code, transparence, polices exotiques.
+            </p>
+            <ul>
+              <li>Le fichier le plus sûr pour la Konica</li>
+              <li>Texte aplati : plus de substitution possible</li>
+              <li>Idéal quand les alertes sont bloquantes</li>
+            </ul>
+          </article>
+        </div>
+      </section>
+
+      <section class="band">
+        <div class="band-head">
+          <h2>Trois gestes, pas plus</h2>
+        </div>
+        <ol class="steps">
+          <li>
+            <span class="num">01</span>
+            <div>
+              <h3>Déposer</h3>
+              <p>Glissez depuis le bureau, le Finder ou l’explorateur. Plusieurs fichiers d’un coup.</p>
+            </div>
+          </li>
+          <li>
+            <span class="num">02</span>
+            <div>
+              <h3>Lire</h3>
+              <p>Verdict immédiat : conforme, à vérifier, non conforme. Le détail est dépliable.</p>
+            </div>
+          </li>
+          <li>
+            <span class="num">03</span>
+            <div>
+              <h3>Corriger</h3>
+              <p>
+                Compression ou rasterisation, puis enregistrement à côté du fichier d’origine sur
+                ordinateur, téléchargement sur le web.
+              </p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="privacy">
+        <div>
+          <h2>Aucun fichier ne quitte la machine.</h2>
+          <p>
+            L’analyse et l’allègement s’exécutent dans le navigateur ou dans l’application. Pas de
+            compte, pas de serveur, pas de télémétrie. Les fichiers ne sont jamais conservés.
+          </p>
+        </div>
+        <ul class="privacy-list">
+          <li><span>Web</span> WebAssembly &amp; canvas locaux</li>
+          <li><span>Bureau</span> Electron, système de fichiers natif</li>
+          <li><span>Réseau</span> aucune connexion pendant l’analyse</li>
+        </ul>
+      </section>
+
+      <section class="band" id="telecharger">
+        <div class="band-head">
+          <h2>Télécharger</h2>
+          <p>
+            Builds publiés par GitHub Actions pour chaque système. Version web immédiate, sans
+            installation.
+          </p>
+        </div>
+
+        <div class="downloads" data-downloads>
+          <a class="download" data-platform="mac-arm64" href="#">
+            <span class="dl-label">macOS · Apple Silicon</span>
+            <span class="dl-meta">.dmg · arm64</span>
+            <span class="dl-arrow" aria-hidden="true">↓</span>
+          </a>
+          <a class="download" data-platform="mac-intel" href="#">
+            <span class="dl-label">macOS · Intel</span>
+            <span class="dl-meta">.dmg · x64</span>
+            <span class="dl-arrow" aria-hidden="true">↓</span>
+          </a>
+          <a class="download" data-platform="windows" href="#">
+            <span class="dl-label">Windows 10 / 11</span>
+            <span class="dl-meta">.exe · x64</span>
+            <span class="dl-arrow" aria-hidden="true">↓</span>
+          </a>
+          <a class="download" data-platform="linux" href="#">
+            <span class="dl-label">Linux</span>
+            <span class="dl-meta">.AppImage · x64</span>
+            <span class="dl-arrow" aria-hidden="true">↓</span>
+          </a>
+          <a class="download download-web" href="./app/">
+            <span class="dl-label">Version web</span>
+            <span class="dl-meta">aucune installation</span>
+            <span class="dl-arrow" aria-hidden="true">→</span>
+          </a>
+        </div>
+
+        <p class="micro">
+          Versions non signées : au premier lancement sur macOS, clic droit sur l’application →
+          Ouvrir. Sur Windows, « Informations complémentaires » → « Exécuter quand même ».
+        </p>
+
+        <details class="faq">
+          <summary>Quel rapport avec PitStop ?</summary>
+          <p>
+            Pré-fly ne remplace pas PitStop ni un flux PDF/X complet. C’est un contrôle rapide et
+            lisible, pensé pour l’atelier : détecter ce qui bloque sur une Konica, puis produire un
+            fichier imprimable sans ouvrir Acrobat.
+          </p>
+        </details>
+        <details class="faq">
+          <summary>Pourquoi la rasterisation règle-t-elle les problèmes ?</summary>
+          <p>
+            Un PDF rasterisé ne contient plus que des images JPEG d’une page. Il n’y a plus de
+            polices à substituer, de SVG à interpréter, de transparence à aplatir : le RIP reçoit
+            une page fermée. Le texte n’est en revanche plus sélectionnable.
+          </p>
+        </details>
+        <details class="faq">
+          <summary>Les élèves peuvent-ils l’utiliser ?</summary>
+          <p>
+            Oui. L’application est gratuite et ne demande aucun compte. La version web fonctionne
+            sur les postes sans droit d’installation ; la version bureau ajoute l’enregistrement
+            direct à côté du fichier d’origine.
+          </p>
+        </details>
+        <details class="faq">
+          <summary>Quelles limites ?</summary>
+          <p>
+            Les PDF chiffrés doivent être déverrouillés. Les très gros fichiers (plus de 250 Mo)
+            peuvent saturer la mémoire d’un navigateur ; préférez alors la version bureau. La
+            rasterisation à 300 dpi reste limitée par la mémoire de la machine.
+          </p>
+        </details>
+      </section>
+    </main>
+
+    <footer class="foot">
+      <div class="foot-left">
+        <span class="mark" aria-hidden="true"></span>
+        <span>Pré-fly</span>
+        <small>pré-vol PDF · ESAD</small>
+      </div>
+      <div class="foot-right">
+        <a href="#" data-github>Code source</a>
+        <a href="./app/">Version web</a>
+        <span>MIT</span>
+        <span data-version>v1.0.0</span>
+        <span data-year></span>
+      </div>
+    </footer>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
