@@ -102,30 +102,38 @@ Le texte est extrait par PDF.js (encodages, CMap, ToUnicode) pour la partie typo
 
 ## Intégration continue
 
-- `.github/workflows/ci.yml` — types, tests, build web (artifact).
-- `.github/workflows/build.yml` — installeurs macOS (arm64 + x64), Windows, Linux pour chaque tag
-  `v*`, puis publication automatique dans la Release.
-- `.github/workflows/pages.yml` — publie la landing et la version web sur GitHub Pages.
+Dépôt : <https://github.com/ClemenceDB/prefly> — release courante : `v1.0.0`.
 
-Le premier job « Build apps » télécharge Electron sur les runners GitHub (réseau complet). En local
-dans un environnement réseau restreint, l'archive Electron peut être indisponible : `npm run dist`
-échouera, alors que `npm run build:web` et `npm test` passent.
+- `.github/workflows/ci.yml` — types, tests, build web (artifact), sur `main`/`pre-fly` et PR.
+- `.github/workflows/build.yml` — installeurs pour chaque tag `v*` puis publication dans la Release :
+  `pre-fly-<version>-arm64.dmg`, `-x64.dmg`, `-x64.exe`, `-x86_64.AppImage`.
+- `.github/workflows/pages.yml` — landing + version web sur GitHub Pages (une fois Pages activé).
+
+Deux contraintes rencontrées sur le compte, déjà contournées dans les workflows :
+
+1. **Runners macOS arm64 indisponibles** (`The configuration 'macos-14-arm64-us-default' is not
+   supported`) → le job macOS cible `macos-15-intel` et electron-builder produit malgré tout les
+   deux architectures.
+2. **Pages doit être activé manuellement une fois** : Settings → Pages → Source : **GitHub Actions**.
+   Avant activation, le job se termine en avertissement (pas en échec) et publie un résumé.
+
+Publier une nouvelle version :
+
+```bash
+git tag -a v1.0.1 -m "Pré-fly 1.0.1"
+git push origin v1.0.1
+```
+
+En local dans un environnement réseau restreint, l'archive Electron peut être indisponible :
+`npm run dist` échouera, alors que `npm run build:web` et `npm test` passent.
 
 ## Publier sur GitHub
 
-Le dépôt local est déjà sur la branche `pre-fly`. Depuis le dossier du projet :
+Le dépôt est déjà en place sur la branche `pre-fly` (`origin` configuré). La landing interroge
+`/releases/latest` : dès qu'une release existe, les quatre boutons pointent vers les bons fichiers.
 
-```bash
-git remote add origin https://github.com/ClemenceDB/prefly.git
-git push -u origin pre-fly
-```
-
-Pour activer le téléchargement de la landing :
-
-1. Settings → Pages → Source : **GitHub Actions**.
-2. Publier un tag : `git tag v1.0.0 && git push origin v1.0.0` — les installeurs sont attachés à la
-   Release et la landing y fait automatiquement référence (`landing/app.js` interroge
-   `/releases/latest`).
+Pour la version web publique, activer une fois Pages (Settings → Pages → Source : GitHub Actions),
+puis relancer le workflow « Pages ».
 
 Les builds ne sont pas signés. macOS : clic droit → Ouvrir au premier lancement. Windows :
 « Informations complémentaires » → « Exécuter quand même ».
