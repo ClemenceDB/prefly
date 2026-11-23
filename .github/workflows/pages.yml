@@ -30,11 +30,20 @@ jobs:
       - run: npm ci
       - run: npm run build:web
 
-      - uses: actions/configure-pages@v5
-        with:
-          enablement: true
+      # Pages doit être activé une fois dans Settings → Pages → Source : GitHub Actions.
+      # Tant que ce n'est pas fait, le job se termine en avertissement au lieu d'échouer.
+      - id: pages
+        uses: actions/configure-pages@v5
+        continue-on-error: true
       - uses: actions/upload-pages-artifact@v3
+        if: steps.pages.outcome == 'success'
         with:
           path: dist
       - id: deployment
+        if: steps.pages.outcome == 'success'
         uses: actions/deploy-pages@v4
+      - name: Pages non activé
+        if: steps.pages.outcome != 'success'
+        run: |
+          echo "::notice title=Pages à activer::Settings → Pages → Source : GitHub Actions, puis relancer ce workflow."
+          echo "Le build web et la landing sont valides (dist/)." >> "$GITHUB_STEP_SUMMARY"

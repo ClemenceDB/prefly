@@ -18,8 +18,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macos-13 (Intel) : les runners arm64 ne sont pas disponibles sur tous les comptes.
+          # electron-builder produit malgré tout les deux architectures (arm64 + x64).
           - name: macOS
-            os: macos-14
+            os: macos-13
             script: dist:mac
             artifact: pre-fly-macos
           - name: Windows
