@@ -42,11 +42,11 @@ export default function DropZone({ version, isDesktopApp, onFiles, onBrowse }: P
           role="button"
           tabIndex={0}
           aria-label="Déposer ou choisir des PDF à analyser"
-          onClick={() => inputRef.current?.click()}
+          onClick={() => onBrowse()}
           onKeyDown={(event) => {
             if (event.key === 'Enter' || event.key === ' ') {
               event.preventDefault();
-              inputRef.current?.click();
+              onBrowse();
             }
           }}
           onDragOver={(event) => {
@@ -66,16 +66,9 @@ export default function DropZone({ version, isDesktopApp, onFiles, onBrowse }: P
           <span className="drop-sub">
             <span>Analyse immédiate, plusieurs fichiers acceptés</span>
             <span className="sep" />
-            <button
-              type="button"
-              className="linklike"
-              onClick={(event) => {
-                event.stopPropagation();
-                onBrowse();
-              }}
-            >
+            <span className="linklike" aria-hidden="true">
               Parcourir…
-            </button>
+            </span>
           </span>
           <input
             ref={inputRef}
