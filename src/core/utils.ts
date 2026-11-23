@@ -40,6 +40,12 @@ export function ptToMm(pt: number): number {
   return (pt * 25.4) / 72;
 }
 
+/** Millimètres avec une décimale, virgule française. */
+export function formatMm(mm: number): string {
+  const rounded = Math.round(mm * 10) / 10;
+  return `${String(rounded).replace('.', ',')} mm`;
+}
+
 export function formatPageSize(wPt: number, hPt: number): string {
   const w = Math.round(ptToMm(wPt));
   const h = Math.round(ptToMm(hPt));

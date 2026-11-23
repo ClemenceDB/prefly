@@ -2,7 +2,15 @@ import type { Thresholds } from './thresholds';
 
 export type Severity = 'critical' | 'warning' | 'info';
 
-export type Category = 'fonts' | 'images' | 'colors' | 'exotic' | 'structure' | 'pages' | 'text';
+export type Category =
+  | 'conception'
+  | 'fonts'
+  | 'images'
+  | 'colors'
+  | 'exotic'
+  | 'structure'
+  | 'pages'
+  | 'text';
 
 export type Verdict = 'ok' | 'check' | 'ko';
 
@@ -15,6 +23,8 @@ export interface Finding {
   advice?: string;
   evidence?: string[];
   pages?: number[];
+  /** Contrôle passé avec succès : n'entre pas dans le score et s'affiche en vert. */
+  positive?: boolean;
 }
 
 export interface FontInfo {
@@ -85,6 +95,10 @@ export interface DocInfo {
   pageSizes: PageSizeBucket[];
   hasTrim: boolean;
   hasBleed: boolean;
+  /** Plus petit débord BleedBox → TrimBox, en millimètres (null si indéterminable). */
+  bleedMm: number | null;
+  /** Logiciel identifié à partir des métadonnées Producer / Creator. */
+  sourceApp?: string;
   incremental: number;
   transparency: boolean;
   overprint: boolean;
@@ -136,6 +150,8 @@ export interface TextPage {
 }
 
 export interface AnalyzeOptions {
+  /** Seuils appliqués ; les valeurs par défaut du profil sont utilisées sinon. */
+  thresholds?: Thresholds;
   onProgress?: (done: number, total: number, label: string) => void;
   extractText?: (bytes: Uint8Array, onPage?: (page: number) => void) => Promise<TextPage[]>;
   maxTextPages?: number;
@@ -144,6 +160,7 @@ export interface AnalyzeOptions {
 export const SEVERITY_ORDER: Record<Severity, number> = { critical: 0, warning: 1, info: 2 };
 
 export const CATEGORY_LABEL: Record<Category, string> = {
+  conception: 'Conception du fichier',
   fonts: 'Typographies',
   images: 'Images',
   colors: 'Couleurs & profils',

@@ -16,10 +16,35 @@ page de téléchargement. Tout est traité en local : aucun fichier n'est envoy�
 | **Couleurs & profils** | tons directs (Separation / DeviceN), RVB seul, ICC intégrés, OutputIntent, surimpression, calques OCG, transparence |
 | **Contenu exotique** | SVG (fichier joint, flux XML, code), fichiers embarqués, JavaScript, actions Launch / GoToR, 3D, RichMedia, formulaires, XMP, données propriétaires |
 | **Code dans le texte** | balises SVG / XML / HTML, JavaScript, CSS, Python, gabarits, PostScript, base64 — page par page |
-| **Structure** | version PDF, chiffrement, mises à jour incrémentales, fin de fichier, formats de page hétérogènes, TrimBox / BleedBox |
+| **Conception du fichier** | logiciel d’origine déduit des métadonnées (InDesign, Illustrator, Figma, Canva, Word, export navigateur…), date de création |
+| **Mode colorimétrique** | qualification RVB / CMJN / niveaux de gris / mixte, tons directs, espaces réellement présents |
+| **Traits de coupe & fonds perdus** | TrimBox, BleedBox et débord mesuré en millimètres, comparé au minimum du profil |
+| **Structure** | version PDF, chiffrement, mises à jour incrémentales, fin de fichier, formats de page hétérogènes |
 
 Verdict en trois états : **Conforme** (ok), **À vérifier** (check), **Non conforme** (ko), avec un
-score sur 100 et la liste des corrections.
+score sur 100 et la liste des corrections. Les contrôles qui passent (fonds perdus conformes, mode
+colorimétrique cohérent…) sont listés en vert et n’entrent pas dans le score.
+
+### Rapport PDF
+
+Le bouton **PDF**, à gauche de « Imprimer », génère un rapport A4 mis en page avec pdf-lib :
+verdict, score, métadonnées, contrôles détaillés, corrections, typographies, images, couleurs,
+contenu exotique et seuils appliqués. Il est enregistré à côté du fichier d’origine sur ordinateur
+et téléchargé sur le web. Le bouton « .json » produit la version structurée, « Imprimer » la sortie
+papier.
+
+### Préférences (seuils)
+
+Le bouton **Préférences** de la barre supérieure — ou <kbd>⌘</kbd>/<kbd>Ctrl</kbd> + <kbd>,</kbd> —
+ouvre l’édition des seuils : résolution d’alerte et de blocage, résolution cible, sur-échantillonnage,
+poids d’image, surface des bitmaps, poids du fichier, fonds perdus minimum, volume de pages, nombre
+de polices, dpi conservés à la compression.
+
+- valeurs bornées et gardées cohérentes (bloquant < alerte < cible < excessif) ;
+- enregistrées dans `localStorage` (`prefly.thresholds.v1`), donc persistantes sur l’appareil ;
+- **Réinitialiser** rétablit le profil Konica C4065 d’origine ;
+- à l’enregistrement, les fichiers déjà ouverts sont réanalysés et chaque rapport embarque les
+  seuils qui l’ont produit (traçabilité dans le JSON et le PDF).
 
 ### Allègement
 

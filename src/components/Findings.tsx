@@ -26,15 +26,23 @@ export default function Findings({ findings }: { findings: Finding[] }) {
   const [filter, setFilter] = useState<Filter>('all');
 
   const counts = useMemo(() => {
-    const base = { critical: 0, warning: 0, info: 0 };
-    for (const finding of findings) base[finding.severity] += 1;
+    const base = { critical: 0, warning: 0, info: 0, positive: 0 };
+    for (const finding of findings) {
+      if (finding.positive) base.positive += 1;
+      else base[finding.severity] += 1;
+    }
     return base;
   }, [findings]);
 
   const visible = useMemo(() => {
-    const list = filter === 'all' ? findings : findings.filter((finding) => finding.severity === filter);
+    const list =
+      filter === 'all'
+        ? findings
+        : findings.filter((finding) => !finding.positive && finding.severity === filter);
+    // Les contrôles conformes passent en fin de liste.
     return [...list].sort(
       (a, b) =>
+        Number(Boolean(a.positive)) - Number(Boolean(b.positive)) ||
         SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity] ||
         a.title.localeCompare(b.title, 'fr'),
     );
@@ -61,6 +69,11 @@ export default function Findings({ findings }: { findings: Finding[] }) {
             {SHORT[severity]} <b>{counts[severity]}</b>
           </button>
         ))}
+        {counts.positive > 0 && (
+          <span className="filter-count mono" aria-live="polite">
+            {counts.positive} conforme(s)
+          </span>
+        )}
         <span className="grow" />
         <span className="mono">Tri par gravité</span>
       </div>
@@ -75,13 +88,16 @@ export default function Findings({ findings }: { findings: Finding[] }) {
             <details
               key={finding.id}
               className="finding"
-              data-severity={finding.severity}
-              open={finding.severity === 'critical'}
+              data-severity={finding.positive ? 'ok' : finding.severity}
+              open={finding.severity === 'critical' && !finding.positive}
             >
               <summary>
                 <span className="finding-title">
-                  <span className="sev" data-severity={finding.severity}>
-                    {LABEL[finding.severity]}
+                  <span
+                    className="sev"
+                    data-severity={finding.positive ? 'ok' : finding.severity}
+                  >
+                    {finding.positive ? 'Conforme' : LABEL[finding.severity]}
                   </span>
                   {finding.title}
                   <span className="finding-cat">{CATEGORY_LABEL[finding.category]}</span>

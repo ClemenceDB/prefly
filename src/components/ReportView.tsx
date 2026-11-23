@@ -1,6 +1,6 @@
 import type { Job } from '../types';
 import { VERDICT_LABEL } from '../types';
-import { THRESHOLDS, PROFILE_LABEL, thresholdSummary } from '../core/thresholds';
+import { PROFILE_LABEL, thresholdSummary } from '../core/thresholds';
 import { humanBytes, humanNumber } from '../core/utils';
 import Findings from './Findings';
 
@@ -9,6 +9,7 @@ interface Props {
   isDesktopApp: boolean;
   onOptimize: (mode: 'compress' | 'raster', dpi?: number) => void;
   onExport: () => void;
+  onExportPdf: () => void;
   onSaveOutput: () => void;
   onReveal: (path: string) => void;
 }
@@ -43,6 +44,7 @@ export default function ReportView({
   isDesktopApp,
   onOptimize,
   onExport,
+  onExportPdf,
   onSaveOutput,
   onReveal,
 }: Props) {
@@ -68,6 +70,7 @@ export default function ReportView({
     ? Math.round((1 - job.output.after / Math.max(1, job.output.before)) * 100)
     : 0;
   const isRaster = job.output?.kind === 'raster';
+  const T = report.thresholds;
 
   return (
     <article className="report">
@@ -153,6 +156,36 @@ export default function ReportView({
         </ul>
       </details>
 
+      <div className="conception-strip">
+        <span>
+          <b>Logiciel</b>
+          {file.sourceApp ?? 'non identifié'}
+          {file.producer ? <em> · {file.producer}</em> : null}
+        </span>
+        <span>
+          <b>Mode colorimétrique</b>
+          {report.colors.length === 0
+            ? 'indéterminé'
+            : Array.from(
+                new Set(
+                  report.colors.map((color) =>
+                    color.spot ? `ton direct (${color.spot})` : color.space,
+                  ),
+                ),
+              )
+                .slice(0, 4)
+                .join(' · ')}
+        </span>
+        <span>
+          <b>Fonds perdus</b>
+          {file.bleedMm !== null
+            ? `${file.bleedMm} mm`
+            : file.hasBleed
+              ? 'zone déclarée'
+              : 'absents'}
+        </span>
+      </div>
+
       {report.text && (
         <p className="mono" style={{ margin: '10px 0 0' }}>
           Texte extrait · {humanNumber(report.text.chars)} caractères sur {report.text.pages} page(s)
@@ -180,7 +213,7 @@ export default function ReportView({
                 </span>
               </summary>
               <div className="menu-pop">
-                {THRESHOLDS.raster.choices.map((dpi) => (
+                {T.raster.choices.map((dpi) => (
                   <button
                     type="button"
                     key={dpi}
@@ -192,9 +225,9 @@ export default function ReportView({
                   >
                     <span>{dpi} dpi</span>
                     <small>
-                      {dpi === THRESHOLDS.raster.defaultDpi
+                      {dpi === T.raster.defaultDpi
                         ? 'recommandé'
-                        : dpi === Math.max(...THRESHOLDS.raster.choices)
+                        : dpi === Math.max(...T.raster.choices)
                           ? 'qualité max'
                           : 'léger'}
                     </small>
@@ -202,8 +235,11 @@ export default function ReportView({
                 ))}
               </div>
             </details>
-            <button type="button" className="btn" onClick={onExport}>
-              Rapport .json
+            <button type="button" className="btn" onClick={onExportPdf} title="Exporter le rapport en PDF">
+              PDF
+            </button>
+            <button type="button" className="btn btn-ghost" onClick={onExport}>
+              .json
             </button>
             <button type="button" className="btn btn-ghost" onClick={() => window.print()}>
               Imprimer
@@ -328,11 +364,11 @@ export default function ReportView({
                 const dpiTone =
                   image.dpi === null
                     ? undefined
-                    : image.dpi < THRESHOLDS.image.dpiCritical
+                    : image.dpi < T.image.dpiCritical
                       ? 'bad'
-                      : image.dpi < THRESHOLDS.image.dpiWarning
+                      : image.dpi < T.image.dpiWarning
                         ? 'warn'
-                        : image.dpi > THRESHOLDS.image.dpiExcessive
+                        : image.dpi > T.image.dpiExcessive
                           ? 'warn'
                           : 'ok';
                 return (

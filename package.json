@@ -1,7 +1,7 @@
 {
   "name": "pre-fly-esad",
   "productName": "Pré-fly",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "description": "Pré-vol PDF pour l'impression : analyse, diagnostic et allègement des fichiers avant le RIP.",
   "author": "ESAD",

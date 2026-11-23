@@ -451,6 +451,10 @@ h3 {
   border-right: 0;
 }
 
+.grid-3 .cell:nth-last-child(-n + 1) {
+  border-bottom: 0;
+}
+
 .num {
   display: block;
   font-family: var(--font-mono);
@@ -532,6 +536,16 @@ h3 {
   font-size: 13px;
   color: var(--ink-soft);
   position: relative;
+}
+
+.faq kbd {
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 1px 5px;
+  background: var(--panel);
 }
 
 .method li::before {

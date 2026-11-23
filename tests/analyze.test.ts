@@ -1,8 +1,29 @@
 import { describe, expect, it } from 'vitest';
 import { analyzePdf } from '../src/core/analyze';
 import { detectCode } from '../src/core/code';
-import { THRESHOLDS } from '../src/core/thresholds';
-import { brokenPdf, cleanPdf, imageAtDpiPdf, manyPagesPdf, problematicPdf } from './fixtures';
+import { buildReportPdf } from '../src/core/reportPdf';
+import {
+  DEFAULT_THRESHOLDS,
+  cloneThresholds,
+  fieldValue,
+  isDefaultThresholds,
+  mergeThresholds,
+  normalizeThresholds,
+  resetThresholds,
+  saveThresholds,
+  setFieldValue,
+  THRESHOLD_FIELDS,
+  THRESHOLDS,
+} from '../src/core/thresholds';
+import {
+  bleedPdf,
+  brokenPdf,
+  cleanPdf,
+  imageAtDpiPdf,
+  manyPagesPdf,
+  problematicPdf,
+  rgbOnlyPdf,
+} from './fixtures';
 
 const ids = (report: Awaited<ReturnType<typeof analyzePdf>>) => report.findings.map((f) => f.id);
 
@@ -134,5 +155,107 @@ describe('seuils Konica C4065', () => {
     const heavy = await analyzePdf({ name: 'volume2.pdf', bytes: manyPagesPdf(THRESHOLDS.pages.heavy + 5) });
     expect(heavy.findings.find((item) => item.id === 'many-pages')?.severity).toBe('warning');
     expect(heavy.file.pages).toBe(THRESHOLDS.pages.heavy + 5);
+  });
+});
+
+describe('nouveaux contrôles', () => {
+  it('identifie le logiciel d’origine', async () => {
+    const report = await analyzePdf({ name: 'indesign.pdf', bytes: cleanPdf() });
+    expect(report.file.sourceApp).toBe('Adobe InDesign');
+    const finding = report.findings.find((item) => item.id === 'conception-source');
+    expect(finding?.title).toContain('Adobe InDesign');
+    expect(finding?.positive).toBe(true);
+    expect(report.verdict).toBe('ok');
+  });
+
+  it('signale un document uniquement RVB', async () => {
+    const report = await analyzePdf({ name: 'rgb.pdf', bytes: rgbOnlyPdf() });
+    const finding = report.findings.find((item) => item.id === 'color-mode');
+    expect(finding?.severity).toBe('warning');
+    expect(finding?.title).toContain('RVB');
+    expect(report.verdict).not.toBe('ok');
+  });
+
+  it('contrôle traits de coupe et fonds perdus', async () => {
+    const none = await analyzePdf({ name: 'sans-bleed.pdf', bytes: bleedPdf(null) });
+    expect(ids(none)).toContain('bleed-absent');
+
+    const small = await analyzePdf({ name: 'petit-bleed.pdf', bytes: bleedPdf(4) });
+    const finding = small.findings.find((item) => item.id === 'bleed-too-small');
+    expect(finding?.severity).toBe('warning');
+    expect(finding?.title).toContain('1,4');
+
+    const good = await analyzePdf({ name: 'bon-bleed.pdf', bytes: bleedPdf(12) });
+    const okFinding = good.findings.find((item) => item.id === 'bleed-ok');
+    expect(okFinding?.positive).toBe(true);
+    expect(good.file.bleedMm).toBeGreaterThanOrEqual(4);
+  });
+
+  it('respecte les seuils fournis en option', async () => {
+    const lax = cloneThresholds();
+    lax.image.dpiWarning = 100;
+    lax.image.dpiCritical = 60;
+    const report = await analyzePdf(
+      { name: 'souple.pdf', bytes: imageAtDpiPdf(180) },
+      { thresholds: lax },
+    );
+    expect(ids(report)).not.toContain('image-low-dpi');
+    expect(report.thresholds.image.dpiWarning).toBe(100);
+  });
+});
+
+describe('préférences de seuils', () => {
+  it('convertit les unités d’affichage', () => {
+    const field = THRESHOLD_FIELDS.find((item) => item.path === 'image.heavyBytes');
+    expect(field).toBeDefined();
+    expect(fieldValue(DEFAULT_THRESHOLDS, field!)).toBe(10);
+    const next = setFieldValue(DEFAULT_THRESHOLDS, field!, 14);
+    expect(next.image.heavyBytes).toBe(14 * 1024 * 1024);
+  });
+
+  it('garde les seuils ordonnés', () => {
+    const broken = cloneThresholds();
+    broken.image.dpiWarning = 90;
+    broken.image.dpiCritical = 200;
+    broken.image.dpiIdeal = 50;
+    const fixed = normalizeThresholds(broken);
+    expect(fixed.image.dpiCritical).toBeLessThan(fixed.image.dpiWarning);
+    expect(fixed.image.dpiIdeal).toBeGreaterThan(fixed.image.dpiWarning);
+    expect(fixed.image.dpiExcessive).toBeGreaterThan(fixed.image.dpiIdeal);
+  });
+
+  it('fusionne un JSON partiel et détecte les valeurs par défaut', () => {
+    const merged = mergeThresholds({ pages: { many: 40 } });
+    expect(merged.pages.many).toBe(40);
+    expect(merged.image.dpiWarning).toBe(DEFAULT_THRESHOLDS.image.dpiWarning);
+    expect(isDefaultThresholds(merged)).toBe(false);
+    expect(isDefaultThresholds(cloneThresholds())).toBe(true);
+    expect(isDefaultThresholds(resetThresholds())).toBe(true);
+  });
+
+  it('enregistre puis relit les seuils', () => {
+    const custom = cloneThresholds();
+    custom.bleed.minMm = 5;
+    saveThresholds(custom);
+    expect(isDefaultThresholds(cloneThresholds())).toBe(true);
+  });
+});
+
+describe('export PDF du rapport', () => {
+  it('produit un PDF valide, quel que soit le contenu', async () => {
+    const report = await analyzePdf({ name: 'problemes.pdf', bytes: problematicPdf() });
+    const bytes = await buildReportPdf(report, {
+      version: '1.0.0',
+      path: '/tmp/problemes.pdf',
+      generatedAt: new Date('2026-01-12T09:30:00Z'),
+    });
+    const head = Buffer.from(bytes.slice(0, 5)).toString('latin1');
+    expect(head).toBe('%PDF-');
+    expect(bytes.length).toBeGreaterThan(2000);
+
+    const { PDFDocument } = await import('pdf-lib');
+    const reloaded = await PDFDocument.load(bytes);
+    expect(reloaded.getPageCount()).toBeGreaterThan(0);
+    expect(reloaded.getTitle()).toContain('problemes.pdf');
   });
 });

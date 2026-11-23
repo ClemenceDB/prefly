@@ -4,10 +4,11 @@
  */
 export function buildPdf(
   bodies: string[],
-  options: { version?: string; root?: number } = {},
+  options: { version?: string; root?: number; info?: number } = {},
 ): Uint8Array {
   const version = options.version ?? '1.7';
   const root = options.root ?? 1;
+  const info = options.info;
   const chunks: Buffer[] = [];
   let offset = 0;
   const push = (text: string) => {
@@ -27,7 +28,10 @@ export function buildPdf(
   push(`xref\n0 ${bodies.length + 1}\n`);
   push('0000000000 65535 f \n');
   for (const item of offsets) push(`${String(item).padStart(10, '0')} 00000 n \n`);
-  push(`trailer\n<< /Size ${bodies.length + 1} /Root ${root} 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`);
+  const infoEntry = info ? ` /Info ${info} 0 R` : '';
+  push(
+    `trailer\n<< /Size ${bodies.length + 1} /Root ${root} 0 R${infoEntry} >>\nstartxref\n${xrefOffset}\n%%EOF\n`,
+  );
 
   return new Uint8Array(Buffer.concat(chunks));
 }
@@ -43,17 +47,20 @@ export const FONT_DESCRIPTOR_EMBEDDED = `<< /Type /FontDescriptor /FontName /ABC
 
 export function cleanPdf(): Uint8Array {
   const content = 'BT /F1 12 Tf 72 760 Td (Bonjour, atelier demain matin.) Tj ET';
-  return buildPdf([
-    `<< /Type /Catalog /Pages 2 0 R /OutputIntents [9 0 R] >>`,
-    `<< /Type /Pages /Kids [3 0 R] /Count 1 /Resources << /Font << /F1 5 0 R >> >> >>`,
-    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /TrimBox [8.5 8.5 586.78 833.39] /BleedBox [0 0 595.28 841.89] /Contents 4 0 R >>`,
-    streamObject('', content),
-    FONT_EMBEDDED,
-    FONT_DESCRIPTOR_EMBEDDED,
-    streamObject('', '\x00\x01\x00\x00'), // stand-in font program
-    streamObject('', 'Q'), // placeholder, unused by content
-    `<< /Type /OutputIntent /S /GTS_PDFX /OutputConditionIdentifier (FOGRA39) >>`,
-  ]);
+  return buildPdf(
+    [
+      `<< /Type /Catalog /Pages 2 0 R /OutputIntents [9 0 R] >>`,
+      `<< /Type /Pages /Kids [3 0 R] /Count 1 /Resources << /Font << /F1 5 0 R >> >> >>`,
+      `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /TrimBox [8.5 8.5 586.78 833.39] /BleedBox [0 0 595.28 841.89] /Contents 4 0 R >>`,
+      streamObject('', content),
+      FONT_EMBEDDED,
+      FONT_DESCRIPTOR_EMBEDDED,
+      streamObject('', '\x00\x01\x00\x00'), // stand-in font program
+      `<< /Producer (Adobe InDesign 19.0) /Creator (Adobe InDesign 19.0) /CreationDate (D:20260112093000+01\'00\') >>`,
+      `<< /Type /OutputIntent /S /GTS_PDFX /OutputConditionIdentifier (FOGRA39) >>`,
+    ],
+    { info: 8 },
+  );
 }
 
 export function problematicPdf(): Uint8Array {
@@ -141,4 +148,29 @@ export function manyPagesPdf(count: number): Uint8Array {
   }
   bodies[1] = `<< /Type /Pages /Kids [${kids.join(' ')}] /Count ${count} >>`;
   return buildPdf([...bodies, ...pageObjects]);
+}
+
+/** Page A4 avec TrimBox et, si `bleedPt` > 0, une BleedBox débordant de cette valeur. */
+export function bleedPdf(bleedPt: number | null): Uint8Array {
+  const trim = 0;
+  const boxes =
+    bleedPt === null
+      ? `/MediaBox [0 0 595.28 841.89] /TrimBox [0 0 595.28 841.89]`
+      : `/MediaBox [-40 -40 635.28 881.89] /TrimBox [${trim} ${trim} ${595.28 + trim} ${841.89 + trim}] /BleedBox [${-bleedPt} ${-bleedPt} ${595.28 + bleedPt} ${841.89 + bleedPt}]`;
+  return buildPdf([
+    `<< /Type /Catalog /Pages 2 0 R >>`,
+    `<< /Type /Pages /Kids [3 0 R] /Count 1 >>`,
+    `<< /Type /Page /Parent 2 0 R ${boxes} /Contents 4 0 R >>`,
+    streamObject('', '0 0 0 rg 0 0 10 10 re f'),
+  ]);
+}
+
+/** Document en RVB uniquement (opérateurs rg / RG). */
+export function rgbOnlyPdf(): Uint8Array {
+  return buildPdf([
+    `<< /Type /Catalog /Pages 2 0 R >>`,
+    `<< /Type /Pages /Kids [3 0 R] /Count 1 >>`,
+    `<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595.28 841.89] /Contents 4 0 R >>`,
+    streamObject('', '0.9 0.2 0.1 rg 1 0 0 RG 20 20 100 100 re B'),
+  ]);
 }

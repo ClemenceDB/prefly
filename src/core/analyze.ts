@@ -37,9 +37,20 @@ import type {
   Severity,
   TextPage,
 } from './types';
-import { PROFILE_ID, PROFILE_LABEL, THRESHOLDS } from './thresholds';
+import { DEFAULT_THRESHOLDS, PROFILE_ID, PROFILE_LABEL, type Thresholds } from './thresholds';
 import { SEVERITY_ORDER } from './types';
-import { cleanFontName, clamp, formatPageSize, humanBytes, humanNumber, isSubsetName, latin1, truncate, unique } from './utils';
+import {
+  cleanFontName,
+  clamp,
+  formatMm,
+  formatPageSize,
+  humanBytes,
+  humanNumber,
+  isSubsetName,
+  latin1,
+  truncate,
+  unique,
+} from './utils';
 
 const FONT_SUBTYPES = new Set(['Type0', 'Type1', 'MMType1', 'TrueType', 'Type3']);
 const ANNOT_RISK: Record<string, string> = {
@@ -106,6 +117,50 @@ function formatPdfDate(value: string | undefined): string | undefined {
   if (!month) return year;
   const date = `${day ?? '01'}/${month}/${year}`;
   return date;
+}
+
+
+interface SourceGuess {
+  name: string;
+  family: string;
+}
+
+/** Reconnaît le logiciel d'origine à partir des métadonnées du PDF. */
+export function guessSourceApp(producer?: string, creator?: string): SourceGuess | undefined {
+  const haystack = `${producer ?? ''} ${creator ?? ''}`;
+  if (!haystack.trim()) return undefined;
+  const rules: { pattern: RegExp; name: string; family: string }[] = [
+    { pattern: /adobe indesign/i, name: 'Adobe InDesign', family: 'mise en page' },
+    { pattern: /adobe illustrator/i, name: 'Adobe Illustrator', family: 'illustration' },
+    { pattern: /adobe photoshop/i, name: 'Adobe Photoshop', family: 'image' },
+    { pattern: /adobe acrobat/i, name: 'Adobe Acrobat', family: 'PDF' },
+    { pattern: /adobe incopy/i, name: 'Adobe InCopy', family: 'mise en page' },
+    { pattern: /distiller/i, name: 'Adobe Distiller', family: 'PDF' },
+    { pattern: /figma/i, name: 'Figma', family: 'interface' },
+    { pattern: /canva/i, name: 'Canva', family: 'web' },
+    { pattern: /sketch/i, name: 'Sketch', family: 'interface' },
+    { pattern: /affinity (publisher|designer|photo)/i, name: 'Affinity', family: 'PAO' },
+    { pattern: /scribus/i, name: 'Scribus', family: 'PAO' },
+    { pattern: /quarkxpress/i, name: 'QuarkXPress', family: 'mise en page' },
+    { pattern: /microsoft (word|powerpoint|excel)/i, name: 'Microsoft Office', family: 'bureautique' },
+    { pattern: /libreoffice|openoffice/i, name: 'LibreOffice', family: 'bureautique' },
+    { pattern: /google (docs|slides|chrome)/i, name: 'Google Workspace', family: 'web' },
+    { pattern: /craft|craftdesign/i, name: 'Craft', family: 'design' },
+    { pattern: /pixelmator/i, name: 'Pixelmator', family: 'image' },
+    { pattern: /coreldraw/i, name: 'CorelDRAW', family: 'illustration' },
+    { pattern: /pdf-?lib|pdfkit|jspdf|puppeteer|playwright|chrome headless|skia/i, name: 'export automatique (navigateur / bibliothèque)', family: 'généré' },
+    { pattern: /latex|tex/i, name: 'LaTeX', family: 'composition' },
+    { pattern: /ghostscript/i, name: 'Ghostscript', family: 'conversion' },
+    { pattern: /reportlab/i, name: 'ReportLab', family: 'généré' },
+    { pattern: /mac os x.*quartz|quartz pdfcontext/i, name: 'Quartz (macOS)', family: 'système' },
+    { pattern: /cups/i, name: 'CUPS (impression système)', family: 'système' },
+  ];
+  for (const rule of rules) {
+    if (rule.pattern.test(haystack)) return { name: rule.name, family: rule.family };
+  }
+  const first = (producer ?? creator ?? '').trim();
+  if (!first) return undefined;
+  return { name: first.slice(0, 60), family: 'non identifié' };
 }
 
 function fontDescriptorOf(ctx: PDFContext, font: PDFDict): PDFDict | undefined {
@@ -275,6 +330,7 @@ function verdictOf(findings: Finding[], degraded: boolean): { verdict: 'ok' | 'c
   let hasCritical = false;
   let hasWarning = false;
   for (const finding of findings) {
+    if (finding.positive) continue;
     if (finding.severity === 'critical') {
       hasCritical = true;
       score -= 18;
@@ -294,6 +350,7 @@ function verdictOf(findings: Finding[], degraded: boolean): { verdict: 'ok' | 'c
 export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = {}): Promise<Report> {
   const started = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const bytes = input.bytes;
+  const T = options.thresholds ?? DEFAULT_THRESHOLDS;
   const onProgress = options.onProgress ?? (() => undefined);
   const raw: RawScan = rawScan(bytes);
   const collector = createCollector();
@@ -315,6 +372,7 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
     pageSizes: [],
     hasTrim: false,
     hasBleed: false,
+    bleedMm: null,
     incremental: raw.incremental,
     transparency: false,
     overprint: false,
@@ -393,6 +451,7 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
       docInfo.created = formatPdfDate(strOf(get(ctx, infoDict, 'CreationDate')));
     }
     docInfo.encrypted = doc.isEncrypted || raw.encrypted;
+    docInfo.sourceApp = guessSourceApp(docInfo.producer, docInfo.creator)?.name;
 
     // ---- Catalog-level structures ----------------------------------------
     if (catalog) {
@@ -551,6 +610,7 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
     const sizeBuckets = new Map<string, PageSizeBucket>();
     let pagesWithTrim = 0;
     let pagesWithBleed = 0;
+    let minBleedMm: number | null = null;
 
     for (const page of pages) {
       const env = buildEnv(ctx, page.resources);
@@ -638,6 +698,19 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
       if (page.trimBox) pagesWithTrim += 1;
       if (!hasThumb && get(ctx, page.dict, 'Thumb')) hasThumb = true;
       if (page.bleedBox) pagesWithBleed += 1;
+      if (page.trimBox && page.bleedBox) {
+        const trim = page.trimBox;
+        const bleed = page.bleedBox;
+        const margins = [
+          trim.x - bleed.x,
+          trim.y - bleed.y,
+          bleed.x + bleed.width - (trim.x + trim.width),
+          bleed.y + bleed.height - (trim.y + trim.height),
+        ];
+        const smallest = Math.min(...margins);
+        const mm = (Math.max(0, smallest) * 25.4) / 72;
+        minBleedMm = minBleedMm === null ? mm : Math.min(minBleedMm, mm);
+      }
 
       onProgress(1 + page.index, pages.length + 4, `Page ${page.index}/${pages.length}`);
       if (page.index % 8 === 0) await Promise.resolve();
@@ -646,6 +719,7 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
     docInfo.pageSizes = Array.from(sizeBuckets.values()).sort((a, b) => b.count - a.count);
     docInfo.hasTrim = pages.length > 0 && pagesWithTrim === pages.length;
     docInfo.hasBleed = pages.length > 0 && pagesWithBleed === pages.length;
+    docInfo.bleedMm = minBleedMm === null ? null : Math.round(minBleedMm * 10) / 10;
     docInfo.pdfx = docInfo.pdfx || outputIntents.some((intent) => intent.subtype === 'GTS_PDFX');
     docInfo.pdfa = docInfo.pdfa || outputIntents.some((intent) => intent.subtype === 'GTS_PDFA1');
 
@@ -767,40 +841,82 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
         advice: 'Uniformiser le format de toutes les pages avant l’envoi au RIP.',
       });
     }
-    if (!docInfo.hasTrim || !docInfo.hasBleed) {
+    // Traits de coupe et fonds perdus
+    const bleedMm = docInfo.bleedMm;
+    const bleedOk = docInfo.hasTrim && docInfo.hasBleed && (bleedMm ?? 0) >= T.bleed.minMm;
+    if (bleedOk) {
       add({
-        id: 'no-boxes',
+        id: 'bleed-ok',
         severity: 'info',
         category: 'pages',
-        title: 'Zones de coupe absentes',
-        detail: `TrimBox ${docInfo.hasTrim ? 'présente' : 'absente'} · BleedBox ${docInfo.hasBleed ? 'présente' : 'absente'}. Sans fonds perdus déclarés, le RIP utilisera le format de page brut.`,
-        advice: 'Exporter avec 3 mm de fonds perdus et les repères de coupe (PDF/X-4).',
+        title: 'Traits de coupe et fonds perdus conformes',
+        detail: `TrimBox et BleedBox présentes sur toutes les pages. Débord mesuré : ${formatMm(bleedMm ?? 0)} (minimum demandé ${formatMm(T.bleed.minMm)}).`,
+        positive: true,
+      });
+    } else if (!docInfo.hasTrim && !docInfo.hasBleed) {
+      add({
+        id: 'no-boxes',
+        severity: 'warning',
+        category: 'pages',
+        title: 'Ni traits de coupe ni fonds perdus',
+        detail:
+          'Aucune TrimBox ni BleedBox : le RIP imprimera la page entière et le massicotage n’aura aucune marge de sécurité. Sur une affiche à fond perdu, un liseré blanc peut apparaître après coupe.',
+        advice: `Exporter avec ${formatMm(T.bleed.minMm)} de fonds perdus et les repères de coupe (PDF/X-4).`,
+      });
+    } else if (!docInfo.hasTrim) {
+      add({
+        id: 'trim-absent',
+        severity: 'warning',
+        category: 'pages',
+        title: 'Traits de coupe absents (TrimBox)',
+        detail:
+          'La zone de coupe n’est pas déclarée : le RIP ne sait pas où couper et utilisera le format de page. Les repères de coupe ne peuvent pas être positionnés correctement.',
+        advice: `Déclarer la TrimBox et ${formatMm(T.bleed.minMm)} de fonds perdus dans l’export (PDF/X-4).`,
+      });
+    } else if (!docInfo.hasBleed) {
+      add({
+        id: 'bleed-absent',
+        severity: 'warning',
+        category: 'pages',
+        title: 'Fonds perdus absents (BleedBox)',
+        detail:
+          'La zone de coupe existe mais aucun fond perdu n’est déclaré : les images et aplats s’arrêtent au trait de coupe, ce qui laisse apparaître un filet blanc après massicotage.',
+        advice: `Ajouter ${formatMm(T.bleed.minMm)} de fonds perdus (BleedBox) dans l’export.`,
+      });
+    } else {
+      add({
+        id: 'bleed-too-small',
+        severity: 'warning',
+        category: 'pages',
+        title: `Fonds perdus insuffisants (${formatMm(bleedMm ?? 0)})`,
+        detail: `Le débord mesuré entre TrimBox et BleedBox est de ${formatMm(bleedMm ?? 0)}, sous le minimum de ${formatMm(T.bleed.minMm)}. Le massicotage n’a pas de marge de sécurité.`,
+        advice: `Étendre le fond perdu à ${formatMm(T.bleed.minMm)} minimum.`,
       });
     }
-    if (docInfo.pages >= THRESHOLDS.pages.many) {
-      const heavy = docInfo.pages >= THRESHOLDS.pages.heavy;
+    if (docInfo.pages >= T.pages.many) {
+      const heavy = docInfo.pages >= T.pages.heavy;
       add({
         id: 'many-pages',
         severity: heavy ? 'warning' : 'info',
         category: 'pages',
         title: `${humanNumber(docInfo.pages)} pages`,
         detail: heavy
-          ? `Au-delà de ${THRESHOLDS.pages.heavy} pages, le RIP traite le fichier page par page en mémoire : prévoir un envoi fractionné et une compression préalable.`
-          : `Un volume supérieur à ${THRESHOLDS.pages.many} pages augmente le temps de traitement du RIP.`,
+          ? `Au-delà de ${T.pages.heavy} pages, le RIP traite le fichier page par page en mémoire : prévoir un envoi fractionné et une compression préalable.`
+          : `Un volume supérieur à ${T.pages.many} pages augmente le temps de traitement du RIP.`,
         advice: heavy ? 'Fractionner l’envoi ou rasteriser à 200 dpi pour alléger le flux.' : undefined,
       });
     }
 
-    if (input.size && input.size > THRESHOLDS.file.sizeWarningBytes) {
-      const critical = input.size > THRESHOLDS.file.sizeCriticalBytes;
+    if (input.size && input.size > T.file.sizeWarningBytes) {
+      const critical = input.size > T.file.sizeCriticalBytes;
       add({
         id: 'file-heavy',
         severity: critical ? 'critical' : 'warning',
         category: 'structure',
         title: `Fichier de ${humanBytes(input.size)}`,
         detail: critical
-          ? `Au-delà de ${humanBytes(THRESHOLDS.file.sizeCriticalBytes)}, le RIP peut saturer sa mémoire pendant le traitement et interrompre le travail. C’est le cas typique des PDF exportés depuis Figma ou Canva avec des images non optimisées.`
-          : `Un fichier de cette taille ralentit le transfert et le traitement. Les PDF au-delà de ${humanBytes(THRESHOLDS.file.sizeWarningBytes)} gagnent presque toujours à être allégés.`,
+          ? `Au-delà de ${humanBytes(T.file.sizeCriticalBytes)}, le RIP peut saturer sa mémoire pendant le traitement et interrompre le travail. C’est le cas typique des PDF exportés depuis Figma ou Canva avec des images non optimisées.`
+          : `Un fichier de cette taille ralentit le transfert et le traitement. Les PDF au-delà de ${humanBytes(T.file.sizeWarningBytes)} gagnent presque toujours à être allégés.`,
         advice: 'Compresser en priorité ; rasteriser à 200 dpi si le fichier reste lourd.',
       });
     }
@@ -848,7 +964,7 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
         evidence: noToUnicode.map((font) => font.name),
       });
     }
-    if (usedFontList.length > THRESHOLDS.fonts.many) {
+    if (usedFontList.length > T.fonts.many) {
       add({
         id: 'many-fonts',
         severity: 'warning',
@@ -866,19 +982,19 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
     collector.stats.minDpi = minDpi;
 
     const lowDpi = images.filter(
-      (image) => image.dpi !== null && image.dpi < THRESHOLDS.image.dpiWarning,
+      (image) => image.dpi !== null && image.dpi < T.image.dpiWarning,
     );
     const severeDpi = lowDpi.filter(
-      (image) => (image.dpi ?? 0) < THRESHOLDS.image.dpiCritical,
+      (image) => (image.dpi ?? 0) < T.image.dpiCritical,
     );
     if (lowDpi.length > 0) {
       add({
         id: 'image-low-dpi',
         severity: severeDpi.length > 0 ? 'critical' : 'warning',
         category: 'images',
-        title: `${lowDpi.length} image(s) sous ${THRESHOLDS.image.dpiWarning} dpi`,
-        detail: `Résolution insuffisante pour une AccurioPrint à ${THRESHOLDS.image.dpiIdeal} dpi : travées visibles sur les aplats et les dégradés.${severeDpi.length > 0 ? ` Dont ${severeDpi.length} sous ${THRESHOLDS.image.dpiCritical} dpi, inexploitables en impression.` : ''}`,
-        advice: `Remplacer les images basse résolution (${THRESHOLDS.image.dpiIdeal} dpi à taille finale).`,
+        title: `${lowDpi.length} image(s) sous ${T.image.dpiWarning} dpi`,
+        detail: `Résolution insuffisante pour une AccurioPrint à ${T.image.dpiIdeal} dpi : travées visibles sur les aplats et les dégradés.${severeDpi.length > 0 ? ` Dont ${severeDpi.length} sous ${T.image.dpiCritical} dpi, inexploitables en impression.` : ''}`,
+        advice: `Remplacer les images basse résolution (${T.image.dpiIdeal} dpi à taille finale).`,
         evidence: lowDpi.slice(0, 8).map(
           (image) =>
             `${image.page} p. · ${image.name ?? 'image'} · ${image.width}×${image.height} px · ${image.dpi} dpi · ${humanBytes(image.bytes)}`,
@@ -887,32 +1003,32 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
       });
     }
     const oversized = images.filter(
-      (image) => (image.dpi ?? 0) > THRESHOLDS.image.dpiExcessive,
+      (image) => (image.dpi ?? 0) > T.image.dpiExcessive,
     );
     if (oversized.length > 0) {
       add({
         id: 'image-too-high-dpi',
         severity: 'warning',
         category: 'images',
-        title: `${oversized.length} image(s) au-delà de ${THRESHOLDS.image.dpiExcessive} dpi`,
-        detail: `Ces images sont inutilement lourdes : au-delà de ${THRESHOLDS.image.dpiIdeal} dpi à taille finale, le gain visuel est nul mais le décodage et la mémoire explosent.`,
-        advice: `Réduire à ${THRESHOLDS.image.dpiIdeal} dpi via « Compresser » ou « Rasteriser ».`,
+        title: `${oversized.length} image(s) au-delà de ${T.image.dpiExcessive} dpi`,
+        detail: `Ces images sont inutilement lourdes : au-delà de ${T.image.dpiIdeal} dpi à taille finale, le gain visuel est nul mais le décodage et la mémoire explosent.`,
+        advice: `Réduire à ${T.image.dpiIdeal} dpi via « Compresser » ou « Rasteriser ».`,
         evidence: oversized.slice(0, 6).map(
           (image) => `${image.page} p. · ${image.width}×${image.height} px · ${image.dpi} dpi · ${humanBytes(image.bytes)}`,
         ),
       });
     }
-    const heavy = images.filter((image) => image.bytes > THRESHOLDS.image.heavyBytes);
+    const heavy = images.filter((image) => image.bytes > T.image.heavyBytes);
     if (heavy.length > 0) {
       const veryHeavy = heavy.filter(
-        (image) => image.bytes > THRESHOLDS.image.heavyCriticalBytes,
+        (image) => image.bytes > T.image.heavyCriticalBytes,
       );
       add({
         id: 'image-heavy',
         severity: veryHeavy.length > 0 ? 'critical' : 'warning',
         category: 'images',
         title: `${heavy.length} image(s) très lourde(s)`,
-        detail: `Des images dépassent ${humanBytes(THRESHOLDS.image.heavyBytes)} (jusqu’à ${humanBytes(maxImageBytes)}). Elles saturent la mémoire du RIP et ralentissent le transfert.`,
+        detail: `Des images dépassent ${humanBytes(T.image.heavyBytes)} (jusqu’à ${humanBytes(maxImageBytes)}). Elles saturent la mémoire du RIP et ralentissent le transfert.`,
         advice: 'Compresser ou rasteriser le fichier avant l’envoi.',
         evidence: heavy.slice(0, 6).map(
           (image) => `${image.page} p. · ${image.name ?? 'image'} · ${humanBytes(image.bytes)} · ${image.filter} · ${image.colorSpace}`,
@@ -932,22 +1048,22 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
       });
     }
     const hugePixels = images.filter(
-      (image) => image.width * image.height > THRESHOLDS.image.megapixels,
+      (image) => image.width * image.height > T.image.megapixels,
     );
     if (hugePixels.length > 0) {
       add({
         id: 'image-megapixel',
         severity: 'warning',
         category: 'images',
-        title: `${hugePixels.length} image(s) de plus de ${Math.round(THRESHOLDS.image.megapixels / 1_000_000)} Mpx`,
+        title: `${hugePixels.length} image(s) de plus de ${Math.round(T.image.megapixels / 1_000_000)} Mpx`,
         detail: 'Ces images sont décodées en mémoire pleine résolution par le RIP, indépendamment de leur taille d’impression.',
       });
     }
     if (
       images.length > 0 &&
       input.size &&
-      imageBytesTotal > input.size * THRESHOLDS.image.dominanceRatio &&
-      input.size > THRESHOLDS.image.dominanceMinBytes
+      imageBytesTotal > input.size * T.image.dominanceRatio &&
+      input.size > T.image.dominanceMinBytes
     ) {
       add({
         id: 'image-dominated',
@@ -955,6 +1071,95 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
         category: 'images',
         title: 'Le poids du fichier vient des images',
         detail: `${humanBytes(imageBytesTotal)} d’images sur ${humanBytes(input.size)}. La compression aura un effet important.`,
+      });
+    }
+
+    // Conception du fichier (logiciel d'origine)
+    const guess = guessSourceApp(docInfo.producer, docInfo.creator);
+    if (guess) {
+      const details = [
+        guess.name,
+        guess.family !== 'non identifié' ? guess.family : undefined,
+        docInfo.producer ? `Producer : ${truncate(docInfo.producer, 70)}` : undefined,
+        docInfo.creator && docInfo.creator !== docInfo.producer
+          ? `Creator : ${truncate(docInfo.creator, 70)}`
+          : undefined,
+        docInfo.created ? `créé le ${docInfo.created}` : undefined,
+      ].filter(Boolean) as string[];
+      add({
+        id: 'conception-source',
+        severity: 'info',
+        category: 'conception',
+        title: `Fichier conçu avec ${guess.name}`,
+        detail:
+          guess.family === 'généré'
+            ? 'Ce PDF a été produit automatiquement (navigateur, bibliothèque ou export serveur). Ces fichiers embarquent souvent des polices de substitution, des SVG convertis et des images non optimisées.'
+            : 'Logiciel identifié d’après les métadonnées du document. Il détermine les habitudes d’export (polices, profils, transparence) et les corrections à appliquer.',
+        advice:
+          guess.family === 'généré'
+            ? 'Contrôler les polices et les images ; une rasterisation est souvent plus sûre.'
+            : undefined,
+        evidence: details,
+        positive: guess.family !== 'généré',
+      });
+    } else {
+      add({
+        id: 'conception-source',
+        severity: 'warning',
+        category: 'conception',
+        title: 'Logiciel d’origine non identifié',
+        detail:
+          'Aucune métadonnée Producer / Creator exploitable. Le fichier a peut-être été nettoyé, converti ou produit par un outil minimal : les polices et les profils sont à vérifier en priorité.',
+        advice: 'Réexporter depuis l’application source avec les métadonnées conservées.',
+      });
+    }
+
+    // Mode colorimétrique
+    const spaces = Array.from(colors.values());
+    const hasRgb = spaces.some(
+      (color) => color.space === 'DeviceRGB' || color.space === 'CalRGB' || color.space.includes('RGB'),
+    );
+    const hasCmyk = spaces.some(
+      (color) => color.space === 'DeviceCMYK' || color.space.includes('CMYK'),
+    );
+    const hasGray = spaces.some(
+      (color) => color.space === 'DeviceGray' || color.space === 'CalGray' || color.space.includes('Gray'),
+    );
+    const hasLab = spaces.some((color) => color.space === 'Lab');
+    const modeParts: string[] = [];
+    if (hasCmyk) modeParts.push('CMJN');
+    if (hasRgb) modeParts.push('RVB');
+    if (hasGray) modeParts.push('niveaux de gris');
+    if (hasLab) modeParts.push('Lab');
+    if (spotNames.size > 0) modeParts.push(`${spotNames.size} ton(s) direct(s)`);
+    const modeLabel = modeParts.length ? modeParts.join(' + ') : 'indéterminé';
+    const modeIsMixed = (hasRgb && hasCmyk) || (hasGray && (hasRgb || hasCmyk));
+    if (!hasRgb && !hasCmyk && !hasGray && !hasLab) {
+      add({
+        id: 'color-mode',
+        severity: 'info',
+        category: 'colors',
+        title: 'Mode colorimétrique : noir (par défaut)',
+        detail:
+          'Aucun opérateur de couleur n’a été relevé : le contenu est composé en noir d’encre (DeviceGray implicite). Impression en noir seul, aucun risque de conversion.',
+        positive: true,
+      });
+    } else {
+      add({
+        id: 'color-mode',
+        severity: hasRgb && !hasCmyk ? 'warning' : 'info',
+        category: 'colors',
+        title: `Mode colorimétrique : ${modeLabel}`,
+        detail: hasRgb && !hasCmyk
+          ? 'Le fichier est uniquement en RVB : le RIP convertira lui-même vers le CMJN de la Konica, avec un rendu parfois éloigné de la maquette.'
+          : modeIsMixed
+            ? 'Le document mélange plusieurs espaces. La conversion dépendra du profil de sortie du RIP ; un PDF/X-4 avec OutputIntent évite les surprises.'
+            : 'Le document est homogène. Ce mode correspond à ce que le RIP recevra.',
+        advice: hasRgb && !hasCmyk ? 'Convertir en CMJN avec le profil de l’imprimante.' : undefined,
+        evidence: spaces
+          .slice(0, 8)
+          .map((color) => `${color.spot ?? color.space} · ${humanNumber(color.count)} opérateur(s)`),
+        positive: !(hasRgb && !hasCmyk) && !modeIsMixed,
       });
     }
 
@@ -970,25 +1175,6 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
           'Des couleurs Separation / DeviceN (tons directs, type Pantone) sont présentes. Sur une presse quadri elles seront converties approximativement, ou ignorées.',
         advice: 'Convertir les tons directs en CMJN (ou vérifier la bibliothèque du RIP) avant impression.',
         evidence: Array.from(spotNames).slice(0, 12),
-      });
-    }
-    if (!cmykSeen && rgbSeen) {
-      add({
-        id: 'rgb-only',
-        severity: 'warning',
-        category: 'colors',
-        title: 'Document uniquement en RVB',
-        detail: 'Aucune couleur CMJN détectée : le RIP effectuera une conversion RVB → CMJN avec un profil imposé, parfois éloigné de la charte.',
-        advice: 'Convertir en CMJN avec le profil de l’imprimante (ou fournir un PDF/X-4 avec OutputIntent).',
-      });
-    }
-    if (graySeen && !cmykSeen && !rgbSeen) {
-      add({
-        id: 'gray-only',
-        severity: 'info',
-        category: 'colors',
-        title: 'Document en niveaux de gris',
-        detail: 'Toutes les couleurs sont en DeviceGray. Impression en noir seul.',
       });
     }
     if (iccRgb) {
@@ -1250,7 +1436,7 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
   return {
     file: docInfo,
     text: textStats,
-    thresholds: THRESHOLDS,
+    thresholds: T,
     profile: { id: PROFILE_ID, label: PROFILE_LABEL },
     verdict,
     score,
@@ -1265,7 +1451,7 @@ export async function analyzePdf(input: AnalyzeInput, options: AnalyzeOptions = 
       fontsNotEmbedded: Array.from(fonts.values()).filter((font) => font.used && !font.embedded).length,
       images: images.length,
       imagesLowDpi: images.filter(
-        (image) => image.dpi !== null && image.dpi < THRESHOLDS.image.dpiWarning,
+        (image) => image.dpi !== null && image.dpi < T.image.dpiWarning,
       ).length,
       minDpi,
       spots: spotNames.size,

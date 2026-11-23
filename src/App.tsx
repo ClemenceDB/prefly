@@ -1,11 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import pkg from '../package.json';
 import DropZone from './components/DropZone';
+import Preferences from './components/Preferences';
 import Queue from './components/Queue';
 import ReportView from './components/ReportView';
 import { analyzePdf } from './core/analyze';
 import { optimizePdf, suggestName } from './core/optimize';
-import { THRESHOLDS } from './core/thresholds';
+import { buildReportPdf, reportPdfName } from './core/reportPdf';
+import {
+  loadThresholds,
+  resetThresholds,
+  saveThresholds,
+  type Thresholds,
+} from './core/thresholds';
 import type { Report } from './core/types';
 import { humanBytes } from './core/utils';
 import { bridge, downloadBytes, isDesktop, saveOutput } from './lib/bridge';
@@ -41,10 +48,14 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [thresholds, setThresholds] = useState<Thresholds>(() => loadThresholds());
+  const [prefsOpen, setPrefsOpen] = useState(false);
 
   const chainRef = useRef<Promise<void>>(Promise.resolve());
   const inputRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
+  const thresholdsRef = useRef<Thresholds>(thresholds);
+  thresholdsRef.current = thresholds;
 
   const toast = useCallback((text: string, action?: Toast['action']) => {
     const id = Date.now() + Math.random();
@@ -75,6 +86,7 @@ export default function App() {
             {
               extractText,
               maxTextPages: 150,
+              thresholds: thresholdsRef.current,
               onProgress: (done, total, label) => update(job.id, { progress: { done, total, label } }),
             },
           );
@@ -208,6 +220,10 @@ export default function App() {
         event.preventDefault();
         openPicker();
       }
+      if ((event.metaKey || event.ctrlKey) && event.key === ',') {
+        event.preventDefault();
+        setPrefsOpen(true);
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -232,7 +248,11 @@ export default function App() {
   }, []);
 
   const runOptimize = useCallback(
-    async (job: Job, mode: 'compress' | 'raster', dpi = THRESHOLDS.raster.defaultDpi) => {
+    async (
+      job: Job,
+      mode: 'compress' | 'raster',
+      dpi = thresholdsRef.current.raster.defaultDpi,
+    ) => {
       if (!job.bytes.length) return;
       update(job.id, {
         action: mode,
@@ -243,7 +263,7 @@ export default function App() {
         if (mode === 'raster') renderer = await createRenderer(job.bytes);
         const result = await optimizePdf(job.bytes, {
           mode,
-          imageDpi: THRESHOLDS.compress.targetDpi,
+          imageDpi: thresholdsRef.current.compress.targetDpi,
           rasterDpi: dpi,
           quality: mode === 'raster' ? 0.86 : 0.82,
           renderPage: renderer?.renderPage,
@@ -327,6 +347,35 @@ export default function App() {
     [toast],
   );
 
+  const exportReportPdf = useCallback(
+    async (job: Job) => {
+      if (!job.report) return;
+      try {
+        const bytes = await buildReportPdf(job.report, {
+          version: VERSION,
+          path: job.path,
+          generatedAt: new Date(),
+        });
+        const name = reportPdfName(job.name);
+        const saved = await saveOutput(bytes, name, job.path, false);
+        if (saved.ok) {
+          const revealPath = saved.path;
+          toast(
+            `Rapport PDF enregistré (${humanBytes(bytes.length)}).`,
+            isDesktop() && revealPath
+              ? { label: 'Révéler', run: () => bridge()?.reveal(revealPath) }
+              : undefined,
+          );
+        } else if (saved.error && saved.error !== 'Annulé') {
+          toast(`Export PDF impossible : ${saved.error}`);
+        }
+      } catch (error) {
+        toast(`Export PDF impossible : ${errorMessage(error)}`);
+      }
+    },
+    [toast],
+  );
+
   const saveOutputAgain = useCallback(
     async (job: Job) => {
       if (!job.output) return;
@@ -340,6 +389,64 @@ export default function App() {
     },
     [toast, update],
   );
+
+
+  const applyThresholds = useCallback(
+    (next: Thresholds, options: { silent?: boolean } = {}) => {
+      thresholdsRef.current = next;
+      setThresholds(next);
+      if (options.silent) return;
+      setJobs((current) => {
+        const pendingJobs = current.filter((job) => job.bytes.length > 0);
+        pendingJobs.forEach((job) => {
+          chainRef.current = chainRef.current.then(async () => {
+            update(job.id, {
+              status: 'analyzing',
+              progress: { done: 0, total: 1, label: 'Nouveaux seuils' },
+            });
+            try {
+              const report = await analyzePdf(
+                { name: job.name, bytes: job.bytes, size: job.size },
+                {
+                  extractText,
+                  maxTextPages: 150,
+                  thresholds: next,
+                  onProgress: (done, total, label) =>
+                    update(job.id, { progress: { done, total, label } }),
+                },
+              );
+              update(job.id, { status: 'ready', report, progress: undefined });
+            } catch (error) {
+              update(job.id, {
+                status: 'error',
+                progress: undefined,
+                error: `Analyse impossible : ${errorMessage(error)}`,
+              });
+            }
+          });
+        });
+        return current;
+      });
+      toast('Seuils appliqués — rapports réanalysés.');
+    },
+    [toast, update],
+  );
+
+  const savePreferences = useCallback(
+    (next: Thresholds) => {
+      const stored = saveThresholds(next);
+      setPrefsOpen(false);
+      applyThresholds(stored);
+    },
+    [applyThresholds],
+  );
+
+  const resetPreferences = useCallback(() => {
+    const defaults = resetThresholds();
+    setPrefsOpen(false);
+    applyThresholds(defaults);
+    toast('Seuils remis par défaut.');
+  }, [applyThresholds, toast]);
 
   const pending = !selected;
 
@@ -356,6 +463,18 @@ export default function App() {
           <span className="chip-dot" />
           Traitement local
         </span>
+        <button
+          type="button"
+          className="icon-btn"
+          onClick={() => setPrefsOpen(true)}
+          title="Préférences — seuils du pré-vol"
+          aria-label="Préférences"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+            <circle cx="12" cy="12" r="3.2" />
+            <path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1" />
+          </svg>
+        </button>
         {isDesktopApp && (
           <span className="chip hide-sm">
             {platform === 'darwin' ? 'macOS' : platform === 'win32' ? 'Windows' : 'Linux'}
@@ -411,6 +530,7 @@ export default function App() {
               isDesktopApp={isDesktopApp}
               onOptimize={(mode, dpi) => void runOptimize(selected as Job, mode, dpi)}
               onExport={() => void exportReport(selected as Job)}
+              onExportPdf={() => void exportReportPdf(selected as Job)}
               onSaveOutput={() => void saveOutputAgain(selected as Job)}
               onReveal={(path) => bridge()?.reveal(path)}
             />
@@ -424,6 +544,14 @@ export default function App() {
           <span className="mono">PDF uniquement · rien ne quitte la machine</span>
         </div>
       </div>
+
+      <Preferences
+        open={prefsOpen}
+        thresholds={thresholds}
+        onClose={() => setPrefsOpen(false)}
+        onSave={savePreferences}
+        onReset={resetPreferences}
+      />
 
       <div className="toasts" aria-live="polite">
         {toasts.map((item) => (
